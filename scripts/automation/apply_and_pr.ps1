@@ -75,6 +75,7 @@ param(
     [string]$ManifestFile,
     [switch]$SkipManifest,
     [switch]$SkipTests,
+    [switch]$Cycle,
     [string]$Connection = 'dataforge_automation'
 )
 
@@ -95,6 +96,21 @@ $Branch     = "automation/impl-$Stamp-" + (Get-Date).ToUniversalTime().ToString(
 # .venv: a dependency added there would diverge from pyproject.toml and uv.lock and could
 # perturb the long, exact file lists in `make lint` and `make type`.
 $Snow = Join-Path $env:LOCALAPPDATA 'dataforge-automation\venv\Scripts\snow.exe'
+
+# The four-day cycle stages its artifacts under cycle/ and certifies through CYCLE.json, while the
+# retired daily pipeline used the stage root and MANIFEST.json. Both layouts are handled by the SAME
+# code path on purpose: every control in this file - the ancestor check, the LF assertion, the
+# failure-count comparison, the protected paths, the unique branch, the commit-matches-gated-files
+# assertion - was established by a specific failure, and a forked collector would inherit the
+# comments without inheriting the fixes.
+$StatePrefix = ''
+$StateName   = 'MANIFEST.json'
+$ReviewName  = 'daily-review.md'
+if ($Cycle) {
+    $StatePrefix = 'cycle/'
+    $StateName   = 'CYCLE.json'
+    $ReviewName  = 'REVIEW.md'
+}
 
 # The gate venv carries the repo's [dev,playground] extras. It is repointed at the worktree
 # on every run (see Set-GateVenvToWorktree) so that `import dataforge` resolves to the PATCHED
@@ -170,12 +186,15 @@ function Get-WorkspaceListing {
 # Retrieves one file from the workspace stage into $WorkDir. Only call this once
 # Get-WorkspaceListing has confirmed the file is actually there.
 function Get-WorkspaceFile {
-    param([Parameter(Mandatory)][string]$Name)
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [string]$Prefix = ''
+    )
 
     $dest = ($WorkDir -replace '\\', '/')
     $res = Invoke-Native -File $Snow -Arguments @(
         'sql', '-c', $Connection,
-        '-q', "GET '$StagePath/$Name' 'file://$dest/'"
+        '-q', "GET '$StagePath/$Prefix$Name' 'file://$dest/'"
     )
     if ($res.ExitCode -ne 0) {
         Write-Fail "RETRIEVAL FAILED: snow sql exited $($res.ExitCode) fetching $Name"
@@ -224,26 +243,81 @@ function Test-Manifest {
 
     $runId = $null
     if ($m.PSObject.Properties.Name -contains 'run_id') { $runId = $m.run_id }
+    if ($m.PSObject.Properties.Name -contains 'cycle_id') { $runId = $m.cycle_id }
     if (-not $runId) {
-        Write-Fail 'MANIFEST REFUSED: manifest carries no run_id.'
+        Write-Fail 'MANIFEST REFUSED: state file carries neither run_id nor cycle_id.'
         return $false
     }
-    Write-Note "manifest run_id = $runId"
+    Write-Note "run/cycle id = $runId"
     if ($m.PSObject.Properties.Name -contains 'head_sha') { Write-Note "published from  = $($m.head_sha)" }
 
-    $parsed = [datetime]::MinValue
-    if (-not [datetime]::TryParseExact($runId, 'yyyy-MM-dd', $null, 'None', [ref]$parsed)) {
-        Write-Fail "MANIFEST REFUSED: run_id '$runId' is not a yyyy-MM-dd date."
+    # A four-day cycle is deliberately ALLOWED to be several days old - Day 1 publishes on Sunday
+    # evening and collection happens after Thursday - so freshness is measured from the timestamp
+    # the state file actually carries, not from an id that may be a week label like 2026-W38.
+    # The legacy daily pipeline used a yyyy-MM-dd run_id, which is still parsed below.
+    $stamp = $null
+    foreach ($field in @('certified_utc', 'started_utc', 'snapshot_built')) {
+        if ($m.PSObject.Properties.Name -contains $field -and $m.$field) {
+            try { $stamp = [datetime]::Parse($m.$field, $null, 'AdjustToUniversal, AssumeUniversal'); break } catch { }
+        }
+    }
+    if (-not $stamp) {
+        $parsed = [datetime]::MinValue
+        if ([datetime]::TryParseExact($runId, 'yyyy-MM-dd', $null, 'None', [ref]$parsed)) { $stamp = $parsed }
+    }
+    if (-not $stamp) {
+        Write-Fail "MANIFEST REFUSED: could not establish an age for '$runId'."
+        Write-Note 'Expected certified_utc, started_utc or snapshot_built, or a yyyy-MM-dd id.'
         return $false
     }
-    $ageDays = ((Get-Date).ToUniversalTime().Date - $parsed.Date).Days
-    if ($ageDays -lt 0 -or $ageDays -gt 1) {
-        Write-Fail "MANIFEST REFUSED: run_id '$runId' is $ageDays day(s) from today (UTC)."
-        Write-Note 'This is a previous night''s output. Republish inputs rather than shipping it.'
-        return $false
-    }
-    Write-Note "run age = $ageDays day(s) (tolerance 1)"
 
+    # Tolerance is generous because the collector is now a command a human runs, and because
+    # `StartWhenAvailable` on the old scheduled version could defer a run into a later UTC date.
+    # It is not unbounded: the point is to refuse a PREVIOUS cycle's artifacts, which apply just as
+    # cleanly as this cycle's and would produce a perfectly plausible pull request for work nobody
+    # asked for now.
+    $maxAge = if ($Cycle) { 8 } else { 1 }
+    $ageDays = ((Get-Date).ToUniversalTime().Date - $stamp.Date).Days
+    if ($ageDays -lt 0 -or $ageDays -gt $maxAge) {
+        Write-Fail "MANIFEST REFUSED: '$runId' is $ageDays day(s) old (tolerance $maxAge)."
+        Write-Note 'This looks like a previous run. Republish inputs rather than shipping it.'
+        return $false
+    }
+    Write-Note "age = $ageDays day(s) (tolerance $maxAge)"
+
+    # --- The cycle's certification -----------------------------------------------------
+    if ($Cycle) {
+        $sessions = @()
+        if ($m.PSObject.Properties.Name -contains 'sessions' -and $m.sessions) { $sessions = @($m.sessions) }
+        $byPhase = @{}
+        foreach ($s in $sessions) {
+            if ($s.PSObject.Properties.Name -contains 'phase' -and $s.status -eq 'OK') {
+                # Written out rather than as an inline `if` expression: Windows PowerShell 5.1
+                # cannot use `if` as a sub-expression, and `pwsh` is not installed here.
+                if ($byPhase.ContainsKey($s.phase)) { $byPhase[$s.phase] = $byPhase[$s.phase] + 1 }
+                else { $byPhase[$s.phase] = 1 }
+            }
+        }
+        foreach ($phase in @('explore', 'plan', 'code', 'verify')) {
+            $n = 0
+            if ($byPhase.ContainsKey($phase)) { $n = $byPhase[$phase] }
+            Write-Note ("  {0,-8} {1} session(s) OK" -f $phase, $n)
+        }
+
+        if (-not ($m.PSObject.Properties.Name -contains 'certified') -or -not $m.certified) {
+            Write-Fail 'MANIFEST REFUSED: this cycle is not certified.'
+            if ($m.PSObject.Properties.Name -contains 'certification_reason' -and $m.certification_reason) {
+                Write-Note "reason given: $($m.certification_reason)"
+            }
+            Write-Note 'Day 4 declined to certify its own work, or never reached the decision.'
+            Write-Note 'Honouring that: the certification is the only review this work had.'
+            return $false
+        }
+        Write-Note "cycle certified: $($m.certification_reason)"
+        return $true
+    }
+
+    # --- Legacy daily pipeline ---------------------------------------------------------
     if (-not ($m.PSObject.Properties.Name -contains 'stages') -or -not $m.stages) {
         Write-Fail 'MANIFEST REFUSED: manifest has no stages; no cloud stage recorded a result.'
         return $false
@@ -500,15 +574,15 @@ else {
         Write-Note 'Manifest gate BYPASSED (-SkipManifest). Never do this for a real run.'
     }
     else {
-        $localManifest = Join-Path $WorkDir 'MANIFEST.json'
+        $localManifest = Join-Path $WorkDir $StateName
         if (Test-Path $localManifest) { Remove-Item $localManifest }
 
-        if ($listing.Names -notcontains 'MANIFEST.json') {
-            Write-Fail 'MANIFEST REFUSED: the workspace holds no MANIFEST.json.'
+        if ($listing.Names -notcontains $StateName) {
+            Write-Fail "MANIFEST REFUSED: the workspace holds no $StateName."
             Write-Note 'Inputs were never published, or the stage was cleared. Nothing is certified.'
             exit 3
         }
-        if (-not (Get-WorkspaceFile -Name 'MANIFEST.json')) { exit 2 }
+        if (-not (Get-WorkspaceFile -Name $StateName -Prefix $StatePrefix)) { exit 2 }
         if (-not (Test-Manifest -Path $localManifest)) { exit 3 }
     }
 
@@ -519,7 +593,7 @@ else {
         exit 0
     }
 
-    if (-not (Get-WorkspaceFile -Name 'changes.patch')) { exit 2 }
+    if (-not (Get-WorkspaceFile -Name 'changes.patch' -Prefix $StatePrefix)) { exit 2 }
     if (-not (Test-Path $localPatch)) {
         Write-Fail 'RETRIEVAL FAILED: GET reported success but no local file appeared.'
         exit 2
@@ -528,7 +602,7 @@ else {
     # Stage 4 writes this. A missing one is not fatal - the patch and the gates are what matter
     # - so fall back to a generic message rather than discarding verified work over a subject
     # line.
-    if ($listing.Names -contains 'COMMIT_MSG.txt') { Get-WorkspaceFile -Name 'COMMIT_MSG.txt' | Out-Null }
+    if ($listing.Names -contains 'COMMIT_MSG.txt') { Get-WorkspaceFile -Name 'COMMIT_MSG.txt' -Prefix $StatePrefix | Out-Null }
 }
 
 $patchBytes = (Get-Item $localPatch).Length
@@ -676,12 +750,12 @@ try {
     # --- 6. Branch, commit, push, PR --------------------------------------------------
     Write-Step 'Opening the pull request'
 
-    $reviewLocal = Join-Path $WorkDir 'daily-review.md'
+    $reviewLocal = Join-Path $WorkDir $ReviewName
     if (-not $PatchFile) {
         if (Test-Path $reviewLocal) { Remove-Item $reviewLocal }
         # A missing review is not fatal: the patch is the deliverable and the gates already
         # passed. Note it in the PR body rather than discarding verified work over a doc.
-        Get-WorkspaceFile -Name 'daily-review.md' | Out-Null
+        Get-WorkspaceFile -Name $ReviewName -Prefix $StatePrefix | Out-Null
     }
 
     $prBody = @"

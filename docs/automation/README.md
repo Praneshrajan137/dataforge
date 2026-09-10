@@ -25,6 +25,15 @@ Each night the work is split across **four fires** — explore, plan, code, veri
 off through files in the user workspace. None of them can commit, push, or open a pull request.
 A local script gates the final patch and opens the PR. See "The pipeline" below.
 
+> **SUPERSEDED 2026-09-10.** The nightly four-fire pipeline described in this section and the next
+> was replaced by a **weekly four-day, twenty-session cycle**: five sessions on each of Monday
+> (explore), Tuesday (plan), Wednesday (code) and Thursday (verify). The four `DF_STAGE*`
+> automations are dropped and the two scheduled tasks are disabled. See
+> **"The weekly cycle"** below. Everything in this file about the sandbox, the snapshot, line
+> endings, protected paths, prompt invariants and the local gate still applies verbatim — the cycle
+> reuses the same collector — so the sections below remain current except where they describe the
+> nightly *schedule*.
+
 > **Why four fires and not one.** A fire is hard-killed at roughly **15 minutes** of wall
 > clock. Measured 2026-09-08: the single monolithic automation that preceded this pipeline
 > (`COCO_ROUTINE_PROJECT`) was killed at exactly **15 min 01 s** on both 2026-09-06 and
@@ -39,7 +48,164 @@ A local script gates the final patch and opens the PR. See "The pipeline" below.
 > roughly an hour instead of a quarter of one), and it makes partial progress **durable**:
 > every stage's output is on the stage mount before the next stage starts.
 
-## The pipeline
+## The weekly cycle
+
+Twenty sessions, five per day, one phase per day, repeating weekly. All times `Asia/Kolkata`.
+
+```
+Sun evening  LOCAL   start_cycle.ps1     freeze snapshot + TASK.md + RESEARCH_BRIEF.md + CYCLE.json
+Mon 00:30-03:30  5x  EXPLORE   E1..E5    -> cycle/FINDINGS/*.md
+Tue 00:30-03:30  5x  PLAN      P1..P5    -> cycle/MASTER_PLAN.md
+Wed 00:30-03:30  5x  CODE      C1..C5    -> cycle/changes.patch + IMPL_LOG.md
+Thu 00:30-03:30  5x  VERIFY    V1..V5    -> COMMIT_MSG.txt + REVIEW.md + certification
+Thu evening  LOCAL   finish_cycle.ps1    gates BEFORE/AFTER -> pull request
+```
+
+Slots are 00:30, 01:15, 02:00, 02:45, 03:30 — 45 minutes apart, so a ~15 minute fire has 30 minutes
+of slack and no two sessions of a day can overlap. Day gating is by cron day-of-week. All twenty run
+**`claude-opus-5`** explicitly rather than `auto`, so reasoning quality is a property of the
+configuration and not of whatever the orchestrator ranks highest that week.
+
+### Why five short sessions per phase instead of one long one
+
+The 15-minute wall is a **wall-clock** limit, not a token or effort limit, and the distinction
+matters: the prompts explicitly tell each session to use its full reasoning depth, install what it
+needs and run what it needs. What the wall forces is an ordering discipline — write the artifact
+early and refine it — not brevity.
+
+The research that shaped the split, with authority stated because it varies:
+
+- **METR (arXiv:2503.14499)** — agent success is predicted by task *length* more than difficulty:
+  near-100% under 4 human-minutes, under 10% beyond ~4 human-hours. **So each assignment is sized to
+  about fifteen minutes of *human* work, not to a fifth of a day's ambition.** This is the single
+  most important design consequence, and it is why there are twenty narrow briefs rather than four
+  broad ones.
+- **Anthropic's multi-agent system (2025)** — vague subtask briefs *measurably* caused duplication
+  and gaps; the fix was an objective, an output format and **explicit boundaries**. Hence
+  `scripts/automation/cycle/ASSIGNMENTS.md`, where every brief says what it owns *and what another
+  session owns*. Vendor blog, no released data.
+- **Cognition, "Don't Build Multi-Agents"** — "actions carry implicit decisions, and conflicting
+  decisions carry bad results." Reasoned argument with **zero quantitative evidence**. Hence
+  `DECISIONS.md` records rejected alternatives, not just outcomes: a successor that inherits
+  "we chose X" without "we rejected Y because Z" re-litigates or contradicts it.
+- **Liu et al., "Lost in the Middle" (TACL 2023)** — accuracy is highest at the beginning and end of
+  an input. Peer-reviewed and heavily replicated. Hence `STATE.md` has a **mandatory layout**: open
+  questions first, next-action directive last, bulk evidence in the middle where degradation is
+  cheapest.
+- **Chroma, "Context Rot" (2025)** — 18 models degrade with input length at *constant* task
+  difficulty, including on a task that only asks for a word list to be repeated. Strong methodology,
+  vendor report, not peer-reviewed. Hence the **ingestion cap**: a session reads `STATE.md`,
+  `DECISIONS.md`, `COVERAGE.json`, its own scope's artifacts and the last two journal entries —
+  never the whole journal.
+- **tau-bench (arXiv:2406.12045)** — `pass^8 < 25%` where single-pass is under 50%, and it grades by
+  comparing **end state** to a goal state rather than reading the transcript. Hence no session may
+  trust a predecessor's claim; it checks the artifact.
+- **SWE-bench+ (arXiv:2410.06992)** — 31.08% of one agent's passing patches passed only because
+  tests were too weak, and filtering that plus leakage dropped resolution from 12.47% to 3.97%. This
+  is **benchmark validity, not agents lying** — it is routinely miscited, so be precise. Hence every
+  session records *what would have made each check fail*.
+
+### The task is data; the prompts are fixed
+
+Four phase prompts plus a shared preamble, assembled at create time. The standing directive lives in
+`scripts/automation/cycle/TASK.md` and the per-session briefs in `ASSIGNMENTS.md`, both staged as
+inputs. **Editing a prompt file does not change a live automation** — prompts are baked in at create
+time, so re-run `create_cycle_automations.ps1 -Recreate`.
+
+External research is supplied as `RESEARCH_BRIEF.md`, compiled on a machine with internet **because a
+fire has none**. The prompts state that any external claim must cite the brief or be logged as an
+unknown. A directive to research deeply cannot license asserting unsourced facts from memory.
+
+### The handoff contract, in `/workspace/cycle/`
+
+| Artifact | Discipline |
+| --- | --- |
+| `JOURNAL.md` | **Append-only.** One entry per session; never rewritten. The lossless substrate. |
+| `STATE.md` | **Rewritten** each session, kept small. Open questions first, next action last. |
+| `DECISIONS.md` | Append-only. Decision, rationale, rejected alternatives, accepted tradeoff. |
+| `COVERAGE.json` | Assignments done; questions closed **with the evidence**; hypotheses eliminated **with the evidence**. |
+| `CYCLE.json` | Lineage (`cycle_id`, `snapshot_md5`, `task_sha256`, `head_sha`), `sessions[]`, `certified`. |
+
+`scripts/automation/cycle/cycle_state.py` (stdlib only) is the single implementation of reading and
+appending those two JSON files. It writes atomically, because a session killed mid-write would leave
+truncated JSON that fails every later lineage check for a reason unrelated to the work; it preserves
+unknown keys; and it **refuses to close a question or record an elimination without evidence**. A
+`FAILED` session deliberately does *not* mark its assignment complete, so the fallback can recover it.
+
+### Assignment by slot, with a sequential fallback
+
+A session's *phase* is certain — its prompt states it. Its *slot* is derived from
+`TZ=Asia/Kolkata date`, and note that UTC would mislead: **00:30 IST is 19:00 UTC on the previous
+day**, so a naive UTC weekday lookup names the wrong day for every slot in this window. If
+`COVERAGE.json` shows the slot's assignment already complete, the session takes the earliest
+incomplete one for its phase. Sessions are 45 minutes apart and never overlap, so a queue-style
+fallback is safe here; what it buys is recovery from a dead session without duplicated work.
+
+### The snapshot is frozen for the whole cycle
+
+`start_cycle.ps1` publishes once, on Sunday evening. **Days 2 to 4 must not republish**:
+`snapshot_md5` is the lineage key all twenty sessions validate, so refreshing it on Tuesday would
+invalidate Monday's findings. This is the change that makes a multi-day chain possible at all — the
+previous daily publish would have wiped Monday's work on Tuesday morning.
+
+### Both bookends are commands you run, because the scheduled version failed
+
+On **2026-09-10** the laptop was asleep at both 00:00 (`publish`) and 03:00 (`pickup`). Task
+Scheduler's `StartWhenAvailable` deferred both and collapsed them onto the **same wake instant**,
+09:18:47, so they ran **concurrently**: publish deleted handoff artifacts while pickup fetched them.
+Both were killed nine seconds later (`LastTaskResult 3221225786` = `0xC000013A`). The publish log's
+final line is `01-explore.md : REMOVE failed`. No pull request was opened for that night's work and
+the snapshot was never refreshed — while the four cloud fires had run fine, unattended, and recorded
+`OK`.
+
+Two conclusions. A window of 00:30-03:30 makes the sleep-and-defer problem worse rather than better,
+so **both bookends are now evening commands a human runs.** And deferral collapsing onto one instant
+is a real concurrency hazard, so `start_cycle.ps1` and `finish_cycle.ps1` take an **exclusive lock**
+(`%LOCALAPPDATA%\dataforge-automation\cycle.lock`, opened with `FileShare::None` so it releases even
+if the process is killed) and refuse with **exit 4** rather than race.
+
+`start_cycle.ps1` additionally **refuses to clobber an uncollected cycle**: if the stage still holds a
+`changes.patch`, it exits 1 and tells you to collect it or pass `-Force` to discard it deliberately.
+
+### Collection reuses the proven collector, it does not fork it
+
+`finish_cycle.ps1` is a thin wrapper that owns the lock and invokes
+[`scripts/automation/apply_and_pr.ps1`](../../scripts/automation/apply_and_pr.ps1) with `-Cycle`,
+which switches it to `cycle/CYCLE.json`, `cycle/changes.patch` and `REVIEW.md`. The collector is
+**not duplicated**, because every control in it was established by a specific failure — the
+`origin/main` ancestor check, the LF worktree assertion, comparing failure *counts* rather than exit
+codes, protected paths enforced in the script, timestamped branch names, and the assertion that the
+commit contains exactly the gated file list. A fork would inherit the comments describing those
+fixes without inheriting the fixes.
+
+Under `-Cycle` the gate requires `certified == true` in `CYCLE.json` and an age within **8 days**
+(measured from `certified_utc`/`started_utc`, not from the id, because a cycle id is a date label and
+a four-day cycle is legitimately several days old by collection time).
+
+### Autonomy ends at the pull request
+
+There is deliberately **no human gate between Plan and Code**: five Opus-5 sessions implement a master
+plan no human has read. The compensating controls are the **change budget** in `ASSIGNMENTS.md`
+(12 files, 600 net added lines), protected paths enforced in the script, the V3/V4 adversarial review
+sessions, and the collector's before/after failure-count comparison. The honest boundary is that a
+pull request is never merged automatically — that is where the autonomy stops and a person starts.
+
+### Cost, stated plainly
+
+Twenty Opus-5 fires per week, roughly five hours of fire time, plus about ten minutes of local gate
+time. One cycle cannot produce a "definitive reference standard" for a 2,081-file, 38k-LOC
+repository; it can produce a five-dimension evidence-based audit, a prioritised master plan with
+rejected alternatives, and one verified increment. The journal accumulates across cycles, so the
+standard is approached rather than declared.
+
+### Two design choices that rest on inference, not evidence
+
+Recorded so a later cycle can overturn them with data: **append-only journal plus a rewritten index**,
+and **fixed assignment over a work queue**. No controlled study exists for either. Everything above
+about them is inference from the context-rot and compaction findings, and the sources that touch on
+handoff format are blog posts, not measurements.
+
+## The nightly pipeline (superseded 2026-09-10, retained for its failure record)
 
 Six steps: one local publish, four cloud fires, one local gate. All times `Asia/Calcutta`.
 
