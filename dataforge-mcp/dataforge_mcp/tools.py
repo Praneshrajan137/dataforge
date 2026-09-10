@@ -700,6 +700,15 @@ def dataforge_agent_repair(
     only by the advisory inferred guard, so it is held and returned in ``held_fixes``
     rather than written, unless ``allow_unproven_autoapply`` is set.
 
+    ``held_fixes`` carries two distinct kinds of withheld fix, and ``verifier_reason``
+    distinguishes them. A fix may be held because it is **not proven** (the case above), or
+    because the whole batch exceeded the safety constitution's blast-radius budget -- in
+    which case the fixes are verified and provable but withheld for volume, ``safety_verdict``
+    is ``escalate``, and re-issuing the work in smaller batches or passing
+    ``confirm_escalations`` will clear it. Until 2026-09-09 that second kind was dropped
+    entirely: the caller saw ``fixes_count=0`` with an empty review queue and no way to tell
+    a clean table from a refused one.
+
     Args:
         path: CSV path (must be under an allowed MCP root).
         mode: ``dry_run`` (default) or ``apply``.

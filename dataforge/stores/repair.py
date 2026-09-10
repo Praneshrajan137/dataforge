@@ -14,7 +14,8 @@ from dataforge.engine.repair import (
     partition_auto_apply,
     propose_repairs,
 )
-from dataforge.safety import SafetyFilter, SafetyVerdict
+from dataforge.safety.disposition import evaluate_batch_disposition
+from dataforge.safety.filter import SafetyContext
 from dataforge.schema_inference import infer_verification_schema
 from dataforge.stores.base import StoreApplyReceipt, TableStore, TableStoreError
 from dataforge.stores.patch_plan import PatchPlan
@@ -112,9 +113,20 @@ def run_table_store_repair(
         interactive=False,
         verification_schema=verification_schema,
     )
-    batch_safety = SafetyFilter().evaluate_batch(accepted_fixes)
-    if batch_safety.verdict != SafetyVerdict.ALLOW:
-        accepted_fixes = []
+    # One shared disposition, and the context is actually passed. Until 2026-09-09 this line
+    # read ``SafetyFilter().evaluate_batch(accepted_fixes)`` with no context, so
+    # ``evaluate_batch`` fell back to ``SafetyContext()`` with every flag false and
+    # ``confirm_escalations`` was **structurally unreachable on this surface** -- despite being
+    # a parameter of this function and already threaded into ``propose_repairs`` above. The
+    # product's only measured end-to-end correction result requires that flag, so the warehouse
+    # path could not reach it at all. The batch-voided fixes were also dropped on the floor;
+    # they now travel in ``held_fixes`` like every other withheld fix.
+    disposition = evaluate_batch_disposition(
+        accepted_fixes,
+        SafetyContext(confirm_escalations=confirm_escalations),
+    )
+    accepted_fixes = list(disposition.applied)
+    batch_held_fixes = list(disposition.held)
     # Proven-only partition before planning, so the plan describes exactly what will be
     # written and held fixes never become SQL.
     accepted_fixes, calibration_held, plausibility_held = partition_auto_apply(
@@ -123,11 +135,11 @@ def run_table_store_repair(
         covered_columns=authoritative_columns(schema),
         allow_unproven_autoapply=allow_unproven_autoapply,
     )
-    held_fixes = [*calibration_held, *plausibility_held]
+    held_fixes = [*batch_held_fixes, *calibration_held, *plausibility_held]
     plan = store.build_patch_plan(
         accepted_fixes,
         schema=schema,
-        safety_verdict=batch_safety.verdict.value,
+        safety_verdict=disposition.verdict.value,
         touched_constraints=(),
         smt_obligations=("SMTVerifier.verify",) if accepted_fixes else (),
     )
@@ -137,6 +149,7 @@ def run_table_store_repair(
             plan,
             state_root=state_root,
             allow_unproven_autoapply=allow_unproven_autoapply,
+            batch_context=SafetyContext(confirm_escalations=confirm_escalations),
         )
 
     return TableStoreRepairResult(

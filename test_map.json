@@ -307,6 +307,43 @@
       "tests/regression/test_env.py"
     ]
   },
+  "dataforge/limits.py": {
+    "direct_tests": [
+      "tests/unit/test_input_limits.py",
+      "tests/unit/test_cli_repair.py"
+    ],
+    "regression_tests": [
+      "tests/regression/test_env.py"
+    ]
+  },
+  "dataforge/safety/cumulative.py": {
+    "direct_tests": [
+      "tests/unit/test_cumulative_budget.py",
+      "tests/unit/test_engine_repair.py",
+      "tests/integration/test_repair_pipeline.py"
+    ],
+    "benchmark_tests": [
+      "tests/benchmarks/bench_safety_filter.py"
+    ],
+    "regression_tests": [
+      "tests/regression/test_env.py"
+    ]
+  },
+  "dataforge/safety/disposition.py": {
+    "direct_tests": [
+      "tests/unit/test_batch_disposition.py",
+      "tests/unit/test_safety_filter.py",
+      "tests/unit/test_engine_repair.py",
+      "tests/integration/test_repair_pipeline.py",
+      "tests/integration/test_autoapply_decision_table.py"
+    ],
+    "benchmark_tests": [
+      "tests/benchmarks/bench_safety_filter.py"
+    ],
+    "regression_tests": [
+      "tests/regression/test_env.py"
+    ]
+  },
   "dataforge/safety/filter.py": {
     "direct_tests": [
       "tests/unit/test_cli_repair.py",

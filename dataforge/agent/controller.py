@@ -60,7 +60,8 @@ from dataforge.engine.repair import (
     verification_strength_for,
 )
 from dataforge.repairers.base import ProposedFix, RepairAttempt
-from dataforge.safety import SafetyContext, SafetyFilter, SafetyVerdict
+from dataforge.safety import SafetyContext
+from dataforge.safety.disposition import evaluate_batch_disposition, outcome_for_run
 from dataforge.table import (
     cell_value,
     column_names,
@@ -140,9 +141,14 @@ class AgentRepairResult(BaseModel):
     trace: list[AgentActionRecord] = Field(default_factory=list)
     reason: str
     authoritative_schema_present: bool = False
-    # The columns the authoritative schema actually constrains. Authority is per-column:
-    # a schema that declares one column's type grants no authority over any other.
     covered_columns: tuple[str, ...] = ()
+    machine_outcome: dict[str, object] | None = Field(
+        default=None,
+        description=(
+            "Machine-readable outcome envelope (schema_version, outcome_code, "
+            "next_actions, held_count). See dataforge.safety.disposition.MachineOutcome."
+        ),
+    )
 
     model_config = ConfigDict(frozen=True)
 
@@ -441,12 +447,23 @@ def run_agent_repair(
     floor_fixes = [fix for fix in floor_fixes if not _is_held(fix)]
     agent_fixes = [fix for fix in agent_fixes if not _is_held(fix)]
 
-    # 4. Batch safety gate (mirrors the deterministic pipeline: any non-ALLOW
-    #    verdict voids the batch rather than shipping an inconsistent set).
-    batch_safety = SafetyFilter().evaluate_batch(
+    # 4. Batch safety gate, through the one shared disposition every surface consumes.
+    #
+    #    Until 2026-09-09 a non-ALLOW verdict emptied all three lists and routed the voided
+    #    fixes NOWHERE. ``held_fixes`` above carries only the per-fix soundness holds from
+    #    ``_is_held``, so an MCP caller saw ``fixes_count=0`` alongside an empty review queue:
+    #    it was told *that* it had been refused but not *what* was refused, and so could not
+    #    re-issue in smaller batches, present the fixes for approval, or record what it
+    #    declined. ``engine/repair.py`` was corrected on 2026-09-08 and this surface was not,
+    #    which is exactly the parallel write semantics ``PRODUCT.md`` section 8 forbids.
+    #
+    #    The write set is unchanged -- ``all_fixes`` is still emptied on a non-ALLOW verdict.
+    #    Only the reporting changes.
+    batch_disposition = evaluate_batch_disposition(
         all_fixes, SafetyContext(confirm_escalations=request.confirm_escalations)
     )
-    if batch_safety.verdict != SafetyVerdict.ALLOW:
+    batch_held_fixes = list(batch_disposition.held)
+    if not batch_disposition.allowed:
         all_fixes = []
         agent_fixes = []
         floor_fixes = []
@@ -462,8 +479,8 @@ def run_agent_repair(
         else ""
     )
 
-    if batch_safety.verdict != SafetyVerdict.ALLOW:
-        reason = batch_safety.reason
+    if not batch_disposition.allowed:
+        reason = batch_disposition.reason
     elif request.mode == "apply" and all_fixes:
         txn_id = apply_transaction(
             source_path,
@@ -471,6 +488,7 @@ def run_agent_repair(
             source_bytes,
             covered_columns=authoritative_columns(schema),
             allow_unproven_autoapply=request.allow_unproven_autoapply,
+            batch_context=SafetyContext(confirm_escalations=request.confirm_escalations),
         )
         post_sha256 = sha256_file(source_path)
         applied = True
@@ -497,6 +515,16 @@ def run_agent_repair(
         _verified_fix_payload(fix, "Held: not proven against an authoritative schema.")
         for fix in held_fixes
     ]
+    # Batch-voided fixes are verified and provable; they were withheld for BLAST RADIUS, not
+    # for weak evidence. They therefore carry their own reason rather than the unproven one --
+    # reporting them as "not proven" would be a second, quieter false statement.
+    held_payloads.extend(
+        _verified_fix_payload(
+            fix,
+            f"Held: {batch_disposition.reason}",
+        )
+        for fix in batch_held_fixes
+    )
 
     return AgentRepairResult(
         mode=request.mode,
@@ -514,11 +542,19 @@ def run_agent_repair(
         fixes_count=len(all_fixes),
         residual_count=len(residual),
         issues_count=len(issues),
-        safety_verdict=batch_safety.verdict.value,
+        safety_verdict=batch_disposition.verdict.value,
         fixes=fix_payloads,
         held_fixes=held_payloads,
         trace=trace,
         reason=reason,
         authoritative_schema_present=schema is not None,
         covered_columns=tuple(sorted(covered_columns)),
+        machine_outcome=outcome_for_run(
+            issues_count=len(issues),
+            fixes_count=len(all_fixes),
+            held_count=len(held_payloads),
+            safety_verdict=batch_disposition.verdict.value,
+            reason=reason,
+            required_confirm_flags=batch_disposition.required_confirm_flags,
+        ).to_dict(),
     )

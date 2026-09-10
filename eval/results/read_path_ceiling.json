@@ -1,0 +1,83 @@
+{
+  "environment": {
+    "machine": "AMD64",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.10"
+  },
+  "failures": [],
+  "largest_successful_cells": 5000000,
+  "largest_successful_peak_bytes": 429244757,
+  "measurements": [
+    {
+      "bytes_per_cell": 85.9061,
+      "cells": 10000,
+      "columns": 10,
+      "error": null,
+      "file_bytes": 141081,
+      "ok": true,
+      "peak_tracemalloc_bytes": 859061,
+      "read_seconds": 0.07448219999787398,
+      "rows": 1000
+    },
+    {
+      "bytes_per_cell": 82.43357,
+      "cells": 100000,
+      "columns": 10,
+      "error": null,
+      "file_bytes": 1410081,
+      "ok": true,
+      "peak_tracemalloc_bytes": 8243357,
+      "read_seconds": 0.15127499999653082,
+      "rows": 10000
+    },
+    {
+      "bytes_per_cell": 85.937994,
+      "cells": 500000,
+      "columns": 50,
+      "error": null,
+      "file_bytes": 7010401,
+      "ok": true,
+      "peak_tracemalloc_bytes": 42968997,
+      "read_seconds": 0.430914099997608,
+      "rows": 10000
+    },
+    {
+      "bytes_per_cell": 82.039117,
+      "cells": 1000000,
+      "columns": 10,
+      "error": null,
+      "file_bytes": 14100081,
+      "ok": true,
+      "peak_tracemalloc_bytes": 82039117,
+      "read_seconds": 1.3525357000035,
+      "rows": 100000
+    },
+    {
+      "bytes_per_cell": 85.8489514,
+      "cells": 5000000,
+      "columns": 50,
+      "error": null,
+      "file_bytes": 70100401,
+      "ok": true,
+      "peak_tracemalloc_bytes": 429244757,
+      "read_seconds": 4.276081200005137,
+      "rows": 100000
+    },
+    {
+      "bytes_per_cell": 77.6192026,
+      "cells": 5000000,
+      "columns": 20,
+      "error": null,
+      "file_bytes": 70250161,
+      "ok": true,
+      "peak_tracemalloc_bytes": 388096013,
+      "read_seconds": 5.254860600005486,
+      "rows": 250000
+    }
+  ],
+  "observed_bytes_per_cell_max": 85.937994,
+  "observed_bytes_per_cell_min": 77.6192026,
+  "schema_version": "read_path_ceiling_v1",
+  "what_this_does_not_measure": "Total process RSS, the detector or repairer passes, SMT verification, or any input larger than the largest grid point below. The ceiling reported here is the largest cell count MEASURED to succeed, not an extrapolated limit.",
+  "what_this_measures": "Peak Python heap (tracemalloc) and wall clock for dataforge.table.read_csv on synthetic identifier-like CSVs. Imports the shipped read path; does not reimplement it."
+}

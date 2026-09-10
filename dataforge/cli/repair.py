@@ -80,6 +80,28 @@ def _print_error(message: str, *, hint: str | None = None) -> None:
     _console.print(Panel(body, title="Repair Error", style="red"))
 
 
+def _exit_code_for_result(
+    fixes_count: int,
+    issues_count: int,
+    held_count: int = 0,
+) -> int:
+    """Map a repair outcome to a CLI exit code.
+
+    0 = fixes were produced (success).
+    1 = clean file, no errors detected.
+    3 = errors found but no fixes written (held, refused, or no repair path).
+
+    Exit code 2 is reserved for usage/argument errors and is never returned here.
+    An agent or pipeline consumer distinguishes "nothing to do" from "refused" by
+    checking exit code alone, without parsing prose.
+    """
+    if fixes_count > 0:
+        return 0
+    if issues_count == 0:
+        return 1
+    return 3
+
+
 def _propose_repairs(
     issues: list[Issue],
     path: Path,

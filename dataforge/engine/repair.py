@@ -47,6 +47,8 @@ from dataforge.repair_contract import CONTRACT_VERSION
 from dataforge.repairers import build_repairers
 from dataforge.repairers.base import ProposedFix, RepairAttempt, RetryContext
 from dataforge.safety import SafetyContext, SafetyFilter, SafetyResult, SafetyVerdict
+from dataforge.safety.cumulative import cumulative_write_permitted
+from dataforge.safety.disposition import evaluate_batch_disposition, outcome_for_batch
 from dataforge.schema_inference import (
     ConstraintReviewArtifact,
     infer_verification_schema,
@@ -101,6 +103,18 @@ class RepairEngineError(RuntimeError):
 
 class TransactionApplyError(RepairEngineError):
     """Raised when an apply transaction cannot be completed safely."""
+
+
+class CumulativeBudgetError(RepairEngineError):
+    """Raised when a write would breach the cumulative cell budget for a source.
+
+    Distinct from :class:`TransactionApplyError` because the remedy is different and a caller
+    must be able to tell them apart programmatically. A ``TransactionApplyError`` says the
+    write is unsafe *now* -- the file moved under us, or a snapshot is missing -- and retrying
+    unchanged will fail again. This says the write is individually fine but the source has
+    already absorbed its budget across earlier invocations, so the caller may revert an
+    earlier repair, split the work, or confirm the blast radius.
+    """
 
 
 class UncheckableDetectorWriteError(RepairEngineError):
@@ -371,6 +385,14 @@ class RepairReceipt(BaseModel):
     issues_count: int = Field(ge=0)
     fixes_count: int = Field(ge=0)
     reason: str = Field(min_length=1)
+    machine_outcome: dict[str, object] | None = Field(
+        default=None,
+        description=(
+            "Machine-readable outcome envelope (schema_version, outcome_code, "
+            "next_actions, held_count). Present on every --json / MCP / warehouse "
+            "surface. See dataforge.safety.disposition.MachineOutcome."
+        ),
+    )
 
     model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
 
@@ -644,6 +666,7 @@ def apply_transaction(
     txn_id: str | None = None,
     covered_columns: frozenset[str] = frozenset(),
     allow_unproven_autoapply: bool = False,
+    batch_context: SafetyContext | None = None,
 ) -> str:
     """Journal, snapshot, atomically apply fixes, and restore bytes on failure.
 
@@ -671,6 +694,22 @@ def apply_transaction(
                 "Refusing to apply repairs because the source file changed after detection."
             )
 
+        # Cumulative blast radius, checked here because this is the one place every surface
+        # reaches and because it must be read inside the lock: the journal it derives from is
+        # what a concurrent writer would have just appended to.
+        #
+        # ``batch_context`` defaults to ``None``, meaning no confirmation -- the strict
+        # direction, matching how ``allow_unproven_autoapply`` defaults. A caller that has
+        # already confirmed blast radius must pass its context, and all three shipped
+        # surfaces do; a direct caller that does not is held to the budget, which is a
+        # refusal rather than a corrupting write.
+        cells_now = len({(proposal.fix.row, proposal.fix.column) for proposal in fixes})
+        permitted, exposure, cumulative_reason = cumulative_write_permitted(
+            resolved_path, cells_now, batch_context
+        )
+        if not permitted:
+            raise CumulativeBudgetError(cumulative_reason or "Cumulative write budget exceeded.")
+        del exposure
         with repair_stage_span("transaction_create", fixes_count=len(fixes)):
             transaction, log_path = create_repair_transaction(
                 resolved_path,
@@ -1918,9 +1957,14 @@ def run_repair_pipeline(
     escalated_suggestions = _escalated_llm_suggestions(attempt_groups)
 
     with repair_stage_span("safety_gate", fixes_count=len(accepted_fixes)):
-        batch_safety = SafetyFilter().evaluate_batch(
+        batch_disposition = evaluate_batch_disposition(
             accepted_fixes,
             SafetyContext(confirm_escalations=request.confirm_escalations),
+        )
+        batch_safety = SafetyResult(
+            verdict=batch_disposition.verdict,
+            reason=batch_disposition.reason,
+            rule_ids=batch_disposition.rule_ids,
         )
     failures = _failed_attempts(attempt_groups)
     transaction: RepairTransaction | None = None
@@ -1942,13 +1986,11 @@ def run_repair_pipeline(
     batch_held: list[ProposedFix] = []
     batch_held_reason: ReviewReason = "safety_escalation"
 
-    if batch_safety.verdict != SafetyVerdict.ALLOW:
-        batch_held = accepted_fixes
-        batch_held_reason = (
-            "safety_denied" if batch_safety.verdict == SafetyVerdict.DENY else "safety_escalation"
-        )
+    if not batch_disposition.allowed:
+        batch_held = list(batch_disposition.held)
+        batch_held_reason = batch_disposition.held_reason or "safety_escalation"
         accepted_fixes = []
-        reason = batch_safety.reason
+        reason = batch_disposition.reason
     elif request.mode == "apply" and accepted_fixes:
         txn_id = apply_transaction(
             source_path,
@@ -1956,6 +1998,7 @@ def run_repair_pipeline(
             source_bytes,
             covered_columns=covered_columns,
             allow_unproven_autoapply=request.allow_unproven_autoapply,
+            batch_context=SafetyContext(confirm_escalations=request.confirm_escalations),
         )
         post_sha256 = sha256_file(source_path)
         applied = True
@@ -2121,6 +2164,11 @@ def run_repair_pipeline(
             issues_count=len(issues),
             fixes_count=len(accepted_fixes),
             reason=reason,
+            machine_outcome=outcome_for_batch(
+                batch_disposition,
+                issues_count=len(issues),
+                fixes_count=len(accepted_fixes),
+            ).to_dict(),
         )
     return RepairPipelineResult(
         receipt=receipt,
@@ -2304,7 +2352,14 @@ def verify_and_apply(request: VerifyAndApplyRequest) -> RepairPipelineResult:
         allow_unproven_autoapply=request.allow_unproven_autoapply,
     )
 
-    batch_safety = safety_filter.evaluate_batch(auto, safety_context)
+    batch_disposition = evaluate_batch_disposition(
+        auto, safety_context, safety_filter=safety_filter
+    )
+    batch_safety = SafetyResult(
+        verdict=batch_disposition.verdict,
+        reason=batch_disposition.reason,
+        rule_ids=batch_disposition.rule_ids,
+    )
     txn_id: str | None = None
     post_sha256: str | None = None
     applied = False
@@ -2314,13 +2369,11 @@ def verify_and_apply(request: VerifyAndApplyRequest) -> RepairPipelineResult:
     # `eval/preregistration/batch_escalation_visibility.md`.
     batch_held: list[ProposedFix] = []
     batch_held_reason: ReviewReason = "safety_escalation"
-    if batch_safety.verdict != SafetyVerdict.ALLOW:
-        batch_held = auto
-        batch_held_reason = (
-            "safety_denied" if batch_safety.verdict == SafetyVerdict.DENY else "safety_escalation"
-        )
+    if not batch_disposition.allowed:
+        batch_held = list(batch_disposition.held)
+        batch_held_reason = batch_disposition.held_reason or "safety_escalation"
         auto = []
-        reason = batch_safety.reason
+        reason = batch_disposition.reason
     elif request.mode == "apply" and auto:
         txn_id = apply_transaction(
             source_path,
@@ -2328,6 +2381,7 @@ def verify_and_apply(request: VerifyAndApplyRequest) -> RepairPipelineResult:
             source_bytes,
             covered_columns=covered_columns,
             allow_unproven_autoapply=request.allow_unproven_autoapply,
+            batch_context=safety_context,
         )
         post_sha256 = sha256_file(source_path)
         applied = True
@@ -2434,6 +2488,11 @@ def verify_and_apply(request: VerifyAndApplyRequest) -> RepairPipelineResult:
         issues_count=len(request.fixes),
         fixes_count=len(auto),
         reason=reason,
+        machine_outcome=outcome_for_batch(
+            batch_disposition,
+            issues_count=len(request.fixes),
+            fixes_count=len(auto),
+        ).to_dict(),
     )
     return RepairPipelineResult(
         receipt=receipt,

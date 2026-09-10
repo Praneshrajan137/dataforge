@@ -46,6 +46,12 @@ __all__ = [
     "CALIBRATED_PROVENANCE",
     "CONSTRAINT_CHECKABLE_DETECTORS",
     "INDEPENDENT_VERIFICATION_HUMAN",
+    "NEXT_ACTIONS",
+    "NEXT_ACTION_HUMAN",
+    "NextAction",
+    "OUTCOME_CODES",
+    "OUTCOME_CODE_HUMAN",
+    "OutcomeCode",
     "PROVENANCE_HUMAN",
     "PROVENANCE_ORDER",
     "REVIEW_REASONS",
@@ -482,3 +488,89 @@ def rung_for(
     if strength == "plausibility_only":
         return "plausibility_only"
     return "plausibility_only"
+
+
+# --- Outcome codes (machine-readable refusal contract) -------------------------
+# Why a repair run produced no writes, or what happened overall.  The target
+# consumer is an autonomous agent / pipeline that reads structured fields only.
+#
+# A prose ``reason`` already existed on every receipt, but prose is unactionable
+# for a machine that must decide what to do next without parsing English.  These
+# codes and the paired ``NextAction`` vocabulary close that gap.
+#
+# **Derived, not restated.**  The same rule that governs ``ALL_ISSUE_TYPES`` and
+# ``REVIEW_REASONS`` applies: every consumer derives the population from this
+# Literal via ``get_args()``.  Hardcoding the population elsewhere is the
+# frozen-population defect ``PRODUCT.md`` §1.3 records twice.
+
+OutcomeCode = Literal[
+    "repairs_applied",
+    "clean",
+    "no_repairable_errors",
+    "all_fixes_held",
+    "batch_safety_denied",
+    "batch_safety_escalated",
+    "cumulative_budget_exceeded",
+    "input_too_large",
+]
+
+OUTCOME_CODES: Final[tuple[OutcomeCode, ...]] = (
+    "repairs_applied",
+    "clean",
+    "no_repairable_errors",
+    "all_fixes_held",
+    "batch_safety_denied",
+    "batch_safety_escalated",
+    "cumulative_budget_exceeded",
+    "input_too_large",
+)
+
+OUTCOME_CODE_HUMAN: Final[dict[str, str]] = {
+    "repairs_applied": "Repairs were applied successfully.",
+    "clean": "No data-quality errors were detected.",
+    "no_repairable_errors": "Errors were detected but no repair could be proposed.",
+    "all_fixes_held": "All proposed fixes were held for review.",
+    "batch_safety_denied": "The safety constitution denied the batch outright.",
+    "batch_safety_escalated": (
+        "The safety constitution escalated the batch; it can be cleared with confirmation flags."
+    ),
+    "cumulative_budget_exceeded": ("The cumulative cell budget for this run was exceeded."),
+    "input_too_large": "The input exceeds the measured size ceiling.",
+}
+
+
+# What a machine consumer should do next.  Paired with ``OutcomeCode`` so a
+# pipeline can branch without parsing prose.  The vocabulary is closed for the
+# same reason ``OutcomeCode`` is: a machine that encounters an unknown action
+# must refuse rather than guess, and a closed set lets it do that.
+
+NextAction = Literal[
+    "none",
+    "retry_smaller_batch",
+    "needs_confirm_escalations",
+    "needs_declared_premise",
+    "needs_review",
+]
+
+NEXT_ACTIONS: Final[tuple[NextAction, ...]] = (
+    "none",
+    "retry_smaller_batch",
+    "needs_confirm_escalations",
+    "needs_declared_premise",
+    "needs_review",
+)
+
+NEXT_ACTION_HUMAN: Final[dict[str, str]] = {
+    "none": "No further action is required.",
+    "retry_smaller_batch": (
+        "Re-issue the work in smaller sub-batches to stay under the blast-radius budget."
+    ),
+    "needs_confirm_escalations": (
+        "Re-run with --confirm-escalations (CLI) or confirm_escalations=True (API) "
+        "to clear the safety escalation."
+    ),
+    "needs_declared_premise": (
+        "Provide an authoritative schema via --schema to enable proven writes."
+    ),
+    "needs_review": "A human must review the held fixes before they can be applied.",
+}

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from dataforge.detectors.base import Schema
 from dataforge.repairers.base import ProposedFix
+from dataforge.safety.filter import SafetyContext
 from dataforge.stores.base import StoreApplyReceipt, TableStore, TableStoreError
 from dataforge.stores.patch_plan import PatchPlan
 from dataforge.table import Table, TableLike
@@ -71,9 +72,10 @@ class CloudWarehouseStore(TableStore):
         *,
         state_root: Path | None = None,
         allow_unproven_autoapply: bool = False,
+        batch_context: SafetyContext | None = None,
     ) -> StoreApplyReceipt:
         """Refuse mutation for unproven cloud adapters."""
-        del state_root, allow_unproven_autoapply
+        del state_root, allow_unproven_autoapply, batch_context
         raise TableStoreError(
             f"{self.backend} apply is disabled until its conformance suite is enabled."
         )

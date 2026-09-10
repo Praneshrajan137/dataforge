@@ -11,6 +11,7 @@ from typing import Any
 from dataforge.detectors.base import Schema
 from dataforge.engine.repair import authoritative_columns
 from dataforge.repairers.base import ProposedFix
+from dataforge.safety.filter import SafetyContext
 from dataforge.stores.base import StoreApplyReceipt, TableStore, TableStoreError
 from dataforge.stores.patch_plan import (
     PatchOperation,
@@ -268,8 +269,16 @@ class DuckDBStore(TableStore):
         *,
         state_root: Path | None = None,
         allow_unproven_autoapply: bool = False,
+        batch_context: SafetyContext | None = None,
     ) -> StoreApplyReceipt:
         """Apply a verified DuckDB patch plan inside a transaction."""
+        # Accepted for protocol conformance and deliberately unused. The cumulative cell
+        # budget in ``apply_transaction`` is derived from the FILE transaction journal under
+        # ``.dataforge/``, which a warehouse table does not have. Silently accepting the
+        # context while enforcing nothing would be the honest-looking version of the defect
+        # this parameter was added to fix, so the omission is named here rather than implied:
+        # cumulative exposure is UNENFORCED on the DuckDB backend.
+        del batch_context
         if plan.backend != self.backend:
             raise TableStoreError(f"Patch plan backend {plan.backend!r} does not match DuckDB.")
         enforce_plan_write_gates(plan, allow_unproven_autoapply=allow_unproven_autoapply)

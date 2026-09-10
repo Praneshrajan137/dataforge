@@ -7,6 +7,7 @@ from pathlib import Path
 from dataforge.detectors.base import Schema
 from dataforge.engine.repair import apply_transaction, authoritative_columns, read_csv
 from dataforge.repairers.base import ProposedFix
+from dataforge.safety.filter import SafetyContext
 from dataforge.stores.base import StoreApplyReceipt, TableStore
 from dataforge.stores.patch_plan import PatchOperation, PatchPlan, RowIdentity
 from dataforge.table import TableLike, row_count
@@ -82,11 +83,18 @@ class CSVStore(TableStore):
         source_bytes: bytes | None = None,
         fixes: list[ProposedFix] | None = None,
         allow_unproven_autoapply: bool = False,
+        batch_context: SafetyContext | None = None,
     ) -> StoreApplyReceipt:
         """Apply through the existing CSV transaction path.
 
         The proven-only gate is enforced inside ``apply_transaction`` itself, so this
         adapter only has to forward the caller's opt-in and the plan's schema status.
+
+        ``batch_context`` is forwarded for the same reason it exists on the CLI path: the
+        cumulative cell budget lives in ``apply_transaction``, and a surface that cannot
+        reach the confirmation flag would refuse a write the operator already authorised.
+        That is precisely the defect this store's sibling ``stores/repair.py`` carried at the
+        batch gate until 2026-09-09, and it is not worth reintroducing one layer down.
         """
         del state_root
         if fixes is None or source_bytes is None:
@@ -97,6 +105,7 @@ class CSVStore(TableStore):
             source_bytes,
             covered_columns=frozenset(plan.authoritative_columns),
             allow_unproven_autoapply=allow_unproven_autoapply,
+            batch_context=batch_context,
         )
         return StoreApplyReceipt(
             ok=True,

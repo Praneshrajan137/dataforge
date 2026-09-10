@@ -57,6 +57,29 @@ _UNPROJECTED: Final[dict[str, str]] = {
         "client-side copy of a write permission is a copy that can be stale while looking "
         "authoritative. The playground displays what the engine decided; it does not decide."
     ),
+    "OUTCOME_CODES": (
+        "The machine-outcome contract targets PROGRAMMATIC consumers -- CLI `--json`, MCP "
+        "receipts and warehouse results -- and has no browser consumer today. `PRODUCT.md` "
+        "section 1.3 says to name a component's consumer before hardening it; projecting a "
+        "vocabulary nothing renders would add a surface with no reader, and an unread "
+        "projection is exactly what goes stale unnoticed. Project these when the playground "
+        "actually displays an outcome code."
+    ),
+    "OUTCOME_CODE_HUMAN": (
+        "Human labels for OUTCOME_CODES, withheld for the same reason: no browser consumer "
+        "renders them yet. They must be projected in the same change as OUTCOME_CODES, never "
+        "separately, or the browser could show a label for a code it does not know."
+    ),
+    "NEXT_ACTIONS": (
+        "The remedy vocabulary is advice to a machine caller about which flag or retry would "
+        "clear a refusal. It is acted on by a CLI or MCP client, not rendered by the "
+        "playground, and it must not become a client-side decision about what the engine "
+        "would permit -- the same reason CONSTRAINT_CHECKABLE_DETECTORS is withheld above."
+    ),
+    "NEXT_ACTION_HUMAN": (
+        "Human labels for NEXT_ACTIONS, withheld with them and to be projected with them for "
+        "the same paired-consistency reason as OUTCOME_CODE_HUMAN."
+    ),
 }
 
 

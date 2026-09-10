@@ -292,6 +292,20 @@ ignore_missing_imports = true
 module = ["kaggle.*", "kagglesdk.*"]
 ignore_missing_imports = true
 
+# `psutil` is a real runtime dependency (declared above) but ships no `py.typed`, so
+# `mypy --strict` reports import-untyped. Same shape as the cases above: the one consumer,
+# `dataforge/limits.py`, imports it lazily inside a function and treats ANY failure as
+# "available memory unknown", falling back to a permissive sentinel. So the untyped import
+# cannot reach the type system, and a stub package would add a dev dependency to describe two
+# attributes that are already guarded at the call site.
+#
+# Bare `psutil` only, no submodule pattern: the single import is `import psutil`, and mypy
+# reports a pattern that matches nothing as `unused section(s)` -- which the kaggle note above
+# already establishes is noise that trains readers to skim type-check output.
+[[tool.mypy.overrides]]
+module = ["psutil"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 # `--dist loadgroup` is present unconditionally and is inert without `-n`, verified on

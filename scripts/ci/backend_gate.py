@@ -904,12 +904,52 @@ def _run_group(group: str, specs: list[GateCommand]) -> list[bool]:
     return results
 
 
+def _git_ignored_files() -> frozenset[Path] | None:
+    """Return the git-ignored files under the project root, or ``None`` if unknown.
+
+    A secret in a git-ignored file cannot leak through this repository, so scanning those
+    files buys nothing and costs real time: before 2026-09-10 this scan read every byte of
+    ``eval/results/*/dataforge-src/`` -- 75 MB of ignored working copies of this package,
+    dropped there by remote training runs -- on every invocation.
+
+    Adding ``"eval"`` or ``"dataforge-src"`` to :data:`EXCLUDED_SECRET_DIRS` was the obvious
+    fix and it is the wrong one. ``PRODUCT.md`` section 1.3 records two defects caused by a
+    gate that hardcoded part of the population it polices: the literal is correct on the day
+    it is written and silently wrong afterwards. So the exclusion is **derived** from git
+    rather than enumerated -- whatever the next remote run drops into an ignored path is
+    skipped without anyone editing this file.
+
+    Returns ``None`` when git is unavailable or fails, and the caller then scans everything.
+    Failing *open* is deliberate: a slower scan is a cost, while a silently narrowed one is a
+    missed secret.
+    """
+    try:
+        completed = subprocess.run(  # noqa: S603
+            ["git", "ls-files", "--others", "--ignored", "--exclude-standard"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    return frozenset(
+        (PROJECT_ROOT / line).resolve() for line in completed.stdout.splitlines() if line.strip()
+    )
+
+
 def _secret_scan() -> bool:
     """Scan first-party files for high-confidence secret material."""
     print("\n==> secret scan")
     findings: list[str] = []
+    ignored = _git_ignored_files()
     for path in PROJECT_ROOT.rglob("*"):
         if not path.is_file():
+            continue
+        if ignored is not None and path.resolve() in ignored:
             continue
         relative = path.relative_to(PROJECT_ROOT)
         if any(

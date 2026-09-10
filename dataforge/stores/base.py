@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dataforge.detectors.base import Schema
 from dataforge.repairers.base import ProposedFix
+from dataforge.safety.filter import SafetyContext
 from dataforge.stores.patch_plan import PatchPlan
 from dataforge.table import TableLike
 
@@ -69,6 +70,7 @@ class TableStore(Protocol):
         *,
         state_root: Path | None = None,
         allow_unproven_autoapply: bool = False,
+        batch_context: SafetyContext | None = None,
     ) -> StoreApplyReceipt:
         """Apply a patch plan through the backend transaction mechanism.
 

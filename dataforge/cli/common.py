@@ -10,6 +10,7 @@ from typing import Any, cast
 import typer
 import yaml
 
+from dataforge.limits import enforce_read_within_limits
 from dataforge.table import Table
 from dataforge.table import read_csv as read_table_csv
 from dataforge.verifier.schema import (
@@ -284,10 +285,20 @@ def load_schema_mapping(schema_path: Path) -> dict[str, Any] | None:
 def read_csv(path: Path) -> Table:
     """Read a CSV using conservative string-preserving defaults.
 
+    Refuses, rather than being OOM-killed, when the frame is estimated not to fit in available
+    memory -- see :mod:`dataforge.limits`. The check lives at this CLI boundary rather than in
+    :func:`dataforge.table.read_csv` on purpose: this is where user-supplied input enters, so a
+    refusal here becomes a named reason and an exit code, while a hard limit inside the library
+    primitive would also fire on frames the engine builds for itself.
+
     Args:
         path: CSV path.
 
     Returns:
         A string-preserving DataForge table.
+
+    Raises:
+        InputTooLargeError: When the estimated frame exceeds the memory limit.
     """
+    enforce_read_within_limits(path)
     return read_table_csv(path)
