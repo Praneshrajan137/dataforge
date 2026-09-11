@@ -601,6 +601,15 @@ contradict any of them will reproduce a known failure.
 `could not write config file ... Input/output error`, leaving a `.git/info/` skeleton
 behind. Work under `/tmp/src`.
 
+**Append mode and `fsync` do not work there either.** Found by a Day 3 session on 2026-09-10 while
+it was refusing a run for an unrelated reason: `open(path, 'a')` and `os.fsync` both raise `OSError`
+errno 95 (Operation not supported) on the mount, and shell `>>` fails similarly, while
+read-then-rewrite works. So the "append-only" discipline for `JOURNAL.md` and `DECISIONS.md` is a
+*discipline, not a file mode*: read the whole file, add an entry, write the whole file back, and
+verify it grew. `cycle_state.py` treats `fsync` as best effort for the same reason — durability on
+the stage is the stage's business, and a hard failure there would abort a session for a reason
+unrelated to its work.
+
 Avoid `/tmp/dataforge` specifically: a read-only mount has been observed at that path.
 
 **This failure precedes any network syscall.** A clone failing here is *not* evidence

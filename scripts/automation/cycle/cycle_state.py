@@ -79,7 +79,15 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Atomic replace. A fire killed mid-write must not leave truncated JSON behind."""
+    """Atomic replace. A fire killed mid-write must not leave truncated JSON behind.
+
+    ``fsync`` is BEST EFFORT, not guaranteed. Measured by a D3 session on 2026-09-10: the
+    ``/workspace`` stage mount raises ``OSError`` errno 95 (Operation not supported) for
+    ``open(path, 'a')`` and for ``os.fsync``. Durability there is the stage's business, not ours,
+    and a hard failure here would abort a session for a reason that has nothing to do with its
+    work -- which is precisely the class of silent, unrelated failure this pipeline exists to
+    avoid. So we ask for the flush and carry on if the mount declines.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
     try:
@@ -87,7 +95,10 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
             json.dump(payload, fh, indent=2, sort_keys=False)
             fh.write("\n")
             fh.flush()
-            os.fsync(fh.fileno())
+            try:
+                os.fsync(fh.fileno())
+            except OSError:
+                pass  # errno 95 on the stage mount; see docstring
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)

@@ -55,6 +55,14 @@ Delivery is by file, always.
 `could not write config file ... Input/output error`. It is your only channel to the next session:
 read inputs from it, write artifacts to it, and do nothing else in it.
 
+**APPEND MODE DOES NOT WORK ON `/workspace`.** Measured 2026-09-10: `open(path, 'a')` and `os.fsync`
+both raise `OSError` errno 95 (Operation not supported) there, and shell `>>` fails similarly. So
+"append-only" below describes a **discipline, not a file mode**. To add to `JOURNAL.md` or
+`DECISIONS.md`: READ the whole file, add your entry at the end of the text you read, and WRITE THE
+WHOLE FILE BACK. Read-then-rewrite works. Verify afterwards that the file grew and that every
+earlier entry is still present - silently truncating a predecessor's entry destroys the only
+lossless record the cycle has, and nobody downstream can tell it happened.
+
 **YOUR WORKING DIRECTORY IS `/workspace`, so `cd` into your source tree before running ANY tool.**
 Observed: ruff, mypy and pytest invoked without changing directory first created `.ruff_cache/`,
 `.mypy_cache/` and `.benchmarks/` inside the outbox.
