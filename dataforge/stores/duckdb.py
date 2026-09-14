@@ -272,12 +272,28 @@ class DuckDBStore(TableStore):
         batch_context: SafetyContext | None = None,
     ) -> StoreApplyReceipt:
         """Apply a verified DuckDB patch plan inside a transaction."""
-        # Accepted for protocol conformance and deliberately unused. The cumulative cell
-        # budget in ``apply_transaction`` is derived from the FILE transaction journal under
-        # ``.dataforge/``, which a warehouse table does not have. Silently accepting the
-        # context while enforcing nothing would be the honest-looking version of the defect
-        # this parameter was added to fix, so the omission is named here rather than implied:
-        # cumulative exposure is UNENFORCED on the DuckDB backend.
+        # Accepted for protocol conformance and deliberately unused, but the scope of what is
+        # NOT enforced is narrower than this comment claimed until 2026-09-12, and the
+        # imprecision mattered because it read as "the warehouse path has no volume gate".
+        #
+        # What IS enforced: the single-batch safety disposition, including the
+        # `confirm_high_volume` rule. `stores/repair.py` calls `evaluate_batch_disposition`
+        # with this same context and applies only `disposition.applied`, so a 150-cell batch
+        # without `--confirm-escalations` is escalated and held before a plan is ever built --
+        # measured, not assumed (`tests/unit/test_warehouse_cumulative_gap.py`).
+        #
+        # What is NOT enforced: cumulative exposure ACROSS runs. `cumulative_exposure_for`
+        # counts `len({(fix.row, fix.column) for fix in transaction.fixes})` over the journal,
+        # and the transaction this method records sets `fixes=[]` -- the changed cells live in
+        # `patch_plan` instead. So the count is structurally 0 for every warehouse transaction,
+        # and no threshold can rescue it without teaching the counter to read a patch plan.
+        # A user may therefore apply up-to-budget batches repeatedly to a warehouse table
+        # without tripping the cumulative ceiling a CSV file would trip.
+        #
+        # Silently accepting the context while enforcing nothing would be the honest-looking
+        # version of the defect this parameter was added to fix, so the omission stays named:
+        # cumulative-across-runs exposure is UNENFORCED on the DuckDB backend, for the stated
+        # structural reason rather than by oversight.
         del batch_context
         if plan.backend != self.backend:
             raise TableStoreError(f"Patch plan backend {plan.backend!r} does not match DuckDB.")
