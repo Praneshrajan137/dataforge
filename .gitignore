@@ -48,6 +48,12 @@ dist/
 #                                   (~970 KB) recording past sessions. They are a genuine record and
 #                                   may be worth versioning DELIBERATELY, as a reviewed decision --
 #                                   not swept in as a side effect of a directory move.
+#   .cortex/                     -- the SAME working area under the tool's newer name, holding the
+#                                   per-task plan documents. Added 2026-09-14 for the reason above,
+#                                   and named separately rather than folded into that entry because
+#                                   a renamed directory does not inherit an ignore rule: the old
+#                                   path kept matching nothing while the new one showed up untracked,
+#                                   which is how a stale ignore rule fails open.
 #
 # Note `.cursor/rules/dataforge.md` IS tracked, on purpose: agent RULES are shared, agent STATE is
 # not. That is the line these entries follow.
@@ -55,10 +61,24 @@ dist/
 .idea/
 .vscode/
 .snowflake/
+.cortex/
 .ipynb_checkpoints/
 prompt.md
 compat_output.txt
 tmp*.csv
+
+# Session scratch that keeps showing up untracked, ignored for two different reasons.
+#
+# HANDOFF_*.md -- a bootstrap prompt written to be pasted as the first message of a successor
+#   session. It is transient by construction: it pins a HEAD that goes stale on the next commit,
+#   so a tracked copy is a document that is wrong more often than it is right. What is worth
+#   keeping from one of these belongs in DECISIONS.md, which is the durable record.
+# _p.html, _p.txt -- a third-party paper fetched while reading prior art (~1.5 MB of someone
+#   else's copyrighted text). Citations belong in PRODUCT.md; the source PDF does not belong in
+#   this repository at all.
+HANDOFF_*.md
+_p.html
+_p.txt
 DESIGN_PARTNERS.md
 .hf-space-stage/
 .hf-space-repo/
