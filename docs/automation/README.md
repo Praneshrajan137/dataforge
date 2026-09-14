@@ -616,6 +616,42 @@ Avoid `/tmp/dataforge` specifically: a read-only mount has been observed at that
 that egress is blocked. Conflating the two sent one investigation to entirely the wrong
 conclusion.
 
+### There is no reasoning-effort control on an AGENT TASK, and the payload accepts nonsense
+
+Measured 2026-09-14, after a request to run Opus 5 at maximum effort.
+
+`cortex automation create` exposes no effort, thinking, reasoning, budget or temperature flag — the
+full flag surface was grepped. The live `SYSTEM$CORTEX_AGENT_RUN_V2` payload of the 20 cycle tasks
+carries only `model`, `origin_application`, `parent_message_id`, `messages` and
+`experimental.codingAgent`; there is no effort or thinking field to edit.
+
+The tempting move is to hand-author `CREATE AGENT TASK ... FROM SPECIFICATION` with the field added.
+**That was tried and it is a trap.** A probe task carrying `thinking: {"type": "adaptive"}` and
+`output_config: {"effort": "max"}` was created and fired successfully. So was a negative control
+carrying `thinking: {"type": "totally_not_a_real_type"}`, `output_config: {"effort": "banana"}` and
+an invented top-level key `nonsense_key_that_cannot_exist`. Both `SUCCEEDED` in ~10 s with empty
+`ERROR_CODE` and `ERROR_MESSAGE`. Neither DDL validation nor run-time validation rejects these keys.
+
+That control is the whole point. Without it, the well-formed probe's success reads as confirmation
+that the setting took effect, and the pipeline would have shipped 20 tasks configured by cargo cult.
+A passing check is evidence only if it could have failed; this one could not. Note also that
+`SUCCEEDED` on an agent task is independently untrustworthy here — see the vacuous-success finding
+above.
+
+`output_config.effort` with values `max | high | medium | low`, and `thinking: {"type": "adaptive"}`,
+are real and documented — but for the **Cortex REST Messages API** (`/api/v2/cortex/v1/messages`,
+behind the `effort-2025-11-24` beta header), which is a different surface from an AGENT TASK. The
+Agents Run API offers `orchestration.budget {seconds, tokens}`, which is a ceiling, not an effort
+level, and is not present in the coding-agent payload either.
+
+**So the prompt is the only channel that reaches the model.** `prompts/_preamble.md` carries an
+explicit `REASONING EFFORT: MAXIMUM` section stating that there is no token, thinking or cost budget,
+and defining effort operationally (read the code rather than infer from names, run the command rather
+than assume its output, trace one path end to end, pursue the second explanation after the first one
+fits). Because the prompt is assembled into the payload **at create time**, editing that file changes
+nothing until `create_cycle_automations.ps1` re-creates the tasks — verify with
+`cortex automation describe <name>` and grep the payload, never by reading the local file.
+
 ### GitHub is unreachable, and this is not a permissions problem
 
 Tested twice, the second time with a correct tokenized clone from `/tmp`: the proxy
