@@ -292,10 +292,23 @@ def check() -> int:
         return 1
     # Reported separately so the summary cannot overclaim again. A claim verified by token alone is
     # pinned to a document; one verified with context is pinned to a sentence.
+    #
+    # The ledger is named as an ALLOWLIST for the same reason, added 2026-09-13. "Verified 144
+    # quantitative claims against artifacts" reads as a population; it is a sample, because a claim
+    # is policed only if somebody registered it here. DECISIONS.md:376 records the project being
+    # bitten by precisely that -- "zero registered docs_truth claims, and that gate is an
+    # allowlist, so it could not see the..." -- and a gate whose population is enumerated cannot
+    # report what it is missing. This is the population half of the overclaim described at the top
+    # of this file; the earlier correction fixed only the quality half.
+    #
+    # Deliberately a disclosure and not a coverage threshold: a fitted ratio would need a
+    # pre-registered kill criterion, and would invite registering easy claims to move it.
     print(
         f"Docs truth check passed. Verified {checked} quantitative claims against artifacts "
         f"({with_context} pinned to a specific sentence via 'context', "
-        f"{checked - with_context} to a standalone value in the document)."
+        f"{checked - with_context} to a standalone value in the document). "
+        f"These are the claims registered in {LEDGER_RELATIVE}, which is an allowlist -- "
+        f"unregistered claims, CLI --help promises and qualitative claims are NOT covered here."
     )
     return 0
 
