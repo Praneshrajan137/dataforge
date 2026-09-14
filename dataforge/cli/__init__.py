@@ -61,6 +61,7 @@ _LAZY_GROUPS: Final[dict[str, str]] = {
     "attest": "dataforge.cli.attest:attest_app",
     "constraints": "dataforge.cli.constraints:constraints_app",
     "release": "dataforge.cli.release:release_app",
+    "schema": "dataforge.cli.schema:schema_app",
 }
 
 

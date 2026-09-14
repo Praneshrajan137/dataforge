@@ -237,6 +237,31 @@
       "tests/regression/test_env.py"
     ]
   },
+  "dataforge/ui/outcome.py": {
+    "direct_tests": [
+      "tests/unit/test_outcome_render.py",
+      "tests/unit/test_cli_repair.py"
+    ],
+    "regression_tests": [
+      "tests/regression/test_env.py"
+    ]
+  },
+  "dataforge/schema_scaffold.py": {
+    "direct_tests": [
+      "tests/unit/test_schema_scaffold.py"
+    ],
+    "regression_tests": [
+      "tests/regression/test_env.py"
+    ]
+  },
+  "dataforge/cli/schema.py": {
+    "direct_tests": [
+      "tests/unit/test_schema_scaffold.py"
+    ],
+    "regression_tests": [
+      "tests/regression/test_env.py"
+    ]
+  },
   "dataforge/ui/repair_diff.py": {
     "direct_tests": [
       "tests/unit/test_cli_repair.py"
