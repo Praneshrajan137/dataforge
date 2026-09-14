@@ -718,23 +718,59 @@ class BenchmarkCoverageLossError(RuntimeError):
     """Raised when writing a benchmark run would drop coverage an existing artifact holds."""
 
 
-def _coverage(records: Iterable[object]) -> set[tuple[str, str]]:
-    """Return the (method, dataset) pairs a run covers.
+def _field(record: object, name: str) -> object:
+    """Read a field from either a pydantic record or a plain dict from disk."""
+    return record.get(name) if isinstance(record, dict) else getattr(record, name, None)
 
-    Accepts both the pydantic records of a fresh run and the plain dicts of an artifact
-    already on disk, because the guard has to compare one against the other.
+
+def _evidence(records: Iterable[object]) -> dict[tuple[str, str], tuple[int, frozenset[str]]]:
+    """Per (method, dataset): how many records, and which seeds.
+
+    Both axes are needed. The count alone would let a 3-seed set be replaced by 3 records of
+    one seed; the seed set alone would refuse the legitimate upgrade of a historical artifact
+    that predates the seed field, where one side simply has no seeds to compare.
     """
-    pairs: set[tuple[str, str]] = set()
+    counts: dict[tuple[str, str], int] = {}
+    seeds: dict[tuple[str, str], set[str]] = {}
     for record in records:
-        method = (
-            record.get("method") if isinstance(record, dict) else getattr(record, "method", None)
-        )
-        dataset = (
-            record.get("dataset") if isinstance(record, dict) else getattr(record, "dataset", None)
-        )
-        if isinstance(method, str) and isinstance(dataset, str):
-            pairs.add((method, dataset))
-    return pairs
+        method = _field(record, "method")
+        dataset = _field(record, "dataset")
+        if not isinstance(method, str) or not isinstance(dataset, str):
+            continue
+        key = (method, dataset)
+        counts[key] = counts.get(key, 0) + 1
+        seed = _field(record, "seed")
+        if seed is not None:
+            seeds.setdefault(key, set()).add(str(seed))
+    return {key: (count, frozenset(seeds.get(key, ()))) for key, count in counts.items()}
+
+
+def _dropped_evidence(previous: Iterable[object], current: Iterable[object]) -> list[str]:
+    """Describe every way ``current`` holds less evidence than ``previous``.
+
+    Returns human-readable descriptions rather than tuples so the refusal can name precisely
+    what would have been destroyed. An empty list means the write preserves or extends.
+    """
+    before = _evidence(previous)
+    after = _evidence(current)
+    losses: list[str] = []
+    for key, (previous_count, previous_seeds) in sorted(before.items()):
+        method, dataset = key
+        label = f"{method}/{dataset}"
+        if key not in after:
+            losses.append(label)
+            continue
+        current_count, current_seeds = after[key]
+        # Only compare seeds when BOTH sides record them: an artifact written before the seed
+        # field existed has none, and calling that a loss would make it permanently unwritable.
+        if previous_seeds and current_seeds:
+            missing = previous_seeds - current_seeds
+            if missing:
+                losses.append(f"{label} seed(s) {', '.join(sorted(missing))}")
+                continue
+        if current_count < previous_count:
+            losses.append(f"{label} ({previous_count} records -> {current_count})")
+    return losses
 
 
 def write_run_output(
@@ -754,19 +790,29 @@ def write_run_output(
     and the twelve-record artifact had to be restored with ``git checkout``. Frozen evidence that
     any diagnostic command can overwrite is not frozen.
 
-    So an overwrite is permitted only when it **preserves or extends** the (method, dataset)
-    coverage already on disk. Re-running the full matrix is allowed; quietly replacing it with a
-    slice is not. Pass ``allow_coverage_loss=True`` to overwrite deliberately.
+    So an overwrite is permitted only when it **preserves or extends** the evidence already on
+    disk, measured on three axes: the (method, dataset) pairs, the seeds recorded for each pair,
+    and the number of records per pair. Re-running the full matrix is allowed; quietly replacing
+    it with a slice is not. Pass ``allow_coverage_loss=True`` to overwrite deliberately.
+
+    The seed axis was added on 2026-09-13 because the original guard checked only (method,
+    dataset) and therefore missed ``dataforge bench --quick`` -- which pins ``seeds = 1`` while
+    running the same methods over the same datasets, so the pairs match exactly and nothing
+    looks dropped. A ``--quick`` run duly replaced the committed twelve-record artifact (4 pairs
+    x seeds 0,1,2) with four records, and ``docs_truth`` broke because its positional anchor
+    ``records/3/f1`` then addressed flights/heuristic instead of hospital/heuristic. ``--quick``
+    is the command ``dataforge quickstart`` prints and the README cites for reproduction: the
+    recommended way to confirm the evidence was the one command that silently narrowed it.
     """
     if path.exists() and not allow_coverage_loss:
         try:
             existing = json.loads(path.read_text(encoding="utf-8"))
-            previous = _coverage(existing.get("records", []))
+            previous_records: list[object] = list(existing.get("records", []))
         except (OSError, ValueError, AttributeError):
-            previous = set()  # An unreadable artifact is not evidence worth protecting.
-        dropped = previous - _coverage(output.records)
+            previous_records = []  # An unreadable artifact is not evidence worth protecting.
+        dropped = _dropped_evidence(previous_records, list(output.records))
         if dropped:
-            listed = ", ".join(f"{method}/{dataset}" for method, dataset in sorted(dropped))
+            listed = ", ".join(dropped)
             raise BenchmarkCoverageLossError(
                 f"Refusing to overwrite {path}: it holds results this run does not produce "
                 f"({listed}). Writing would destroy committed evidence that docs and gates "

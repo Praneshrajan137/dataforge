@@ -526,7 +526,8 @@
     "direct_tests": [
       "tests/unit/test_bench_core.py",
       "tests/unit/test_bench_runner.py",
-      "tests/unit/test_cli_bench.py"
+      "tests/unit/test_cli_bench.py",
+      "tests/unit/test_bench_artifact_guard.py"
     ],
     "integration_tests": [
       "tests/integration/test_bench_workflow.py"

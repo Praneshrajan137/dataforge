@@ -124,3 +124,142 @@ def test_the_cli_exposes_the_override_flag() -> None:
 
     names = bench.__annotations__
     assert "allow_coverage_loss" in names
+
+
+class TestSeedCoverageIsAlsoProtected:
+    """The seed is the third dimension the guard's own docstring names, and it was unguarded.
+
+    ``write_run_output``'s docstring says it protects against "a narrower run -- one method, one
+    dataset, one seed, as a diagnostic". The historical incident narrowed all three at once, so
+    a (method, dataset) check caught it and the seed was never separately tested -- every
+    fixture above omits the field entirely.
+
+    ``dataforge bench --quick`` narrows ONLY the seed: it pins ``seeds = 1`` while running the
+    same ``random,heuristic`` methods over the same two datasets. The (method, dataset) pairs
+    are therefore identical, ``dropped`` is empty, and the write proceeds.
+
+    Observed on 2026-09-13, not hypothesised: a ``--quick`` run replaced the committed
+    twelve-record artifact (4 pairs x seeds 0,1,2) with four records (4 pairs x seed 0). The
+    positional ledger anchor ``records/3/f1`` then retargeted from hospital/heuristic (0.8352)
+    to flights/heuristic (0.0) and ``docs_truth`` failed. It failed LOUDLY only because the two
+    values happen to differ; a re-ordering that preserved the value would have passed while
+    pointing at different evidence.
+
+    ``dataforge bench --quick`` is the command ``dataforge quickstart`` prints and the README
+    cites for reproduction. The tool's recommended reproducibility check was the one command
+    that silently narrowed the evidence it exists to confirm.
+    """
+
+    @staticmethod
+    def _seeded(pairs: list[tuple[str, str]], seeds: list[int]) -> list[dict[str, object]]:
+        return [
+            {"method": method, "dataset": dataset, "seed": seed}
+            for method, dataset in pairs
+            for seed in seeds
+        ]
+
+    def test_dropping_seeds_is_refused(self, tmp_path: Path) -> None:
+        """The exact shape of a ``--quick`` run over the committed artifact."""
+        path = tmp_path / "agent_comparison.json"
+        pairs = [
+            ("random", "hospital"),
+            ("heuristic", "hospital"),
+            ("random", "flights"),
+            ("heuristic", "flights"),
+        ]
+        path.write_text(json.dumps({"records": self._seeded(pairs, [0, 1, 2])}), encoding="utf-8")
+        before = path.read_bytes()
+
+        quick = _FakeOutput([])
+        quick.records = self._seeded(pairs, [0])
+
+        with pytest.raises(BenchmarkCoverageLossError) as caught:
+            write_run_output(quick, path)
+
+        assert "--allow-coverage-loss" in str(caught.value)
+        assert path.read_bytes() == before, "the artifact must survive a refusal byte-for-byte"
+
+    def test_rerunning_the_same_seeds_is_still_allowed(self, tmp_path: Path) -> None:
+        """Refreshing an anchor with the full seed set must not need the override."""
+        path = tmp_path / "a.json"
+        pairs = [("heuristic", "hospital")]
+        path.write_text(json.dumps({"records": self._seeded(pairs, [0, 1, 2])}), encoding="utf-8")
+
+        same = _FakeOutput([])
+        same.records = self._seeded(pairs, [0, 1, 2])
+        write_run_output(same, path)
+
+        assert len(json.loads(path.read_text(encoding="utf-8"))["records"]) == 3
+
+    def test_adding_seeds_is_allowed(self, tmp_path: Path) -> None:
+        """More evidence is never a loss."""
+        path = tmp_path / "a.json"
+        pairs = [("heuristic", "hospital")]
+        path.write_text(json.dumps({"records": self._seeded(pairs, [0])}), encoding="utf-8")
+
+        more = _FakeOutput([])
+        more.records = self._seeded(pairs, [0, 1])
+        write_run_output(more, path)
+
+        assert len(json.loads(path.read_text(encoding="utf-8"))["records"]) == 2
+
+    def test_a_seedless_artifact_is_still_comparable(self, tmp_path: Path) -> None:
+        """Older artifacts predate the seed field and must not become unwritable.
+
+        A guard that cannot read historical evidence would wedge the repository, which is the
+        same failure mode the unreadable-artifact case above exists to prevent.
+        """
+        path = tmp_path / "a.json"
+        path.write_text(json.dumps(_artifact([("heuristic", "hospital")])), encoding="utf-8")
+
+        write_run_output(_FakeOutput([("heuristic", "hospital")]), path)
+
+        assert json.loads(path.read_text(encoding="utf-8"))["records"]
+
+
+class TestQuickIsADiagnosticNotAPublication:
+    """``--quick`` must not write the shared evidence ledger at all.
+
+    Guarding the ledger is necessary but not sufficient. With the seed axis added, the honest
+    outcome of ``dataforge bench --quick`` against a committed multi-seed artifact became a
+    refusal -- correct, but it arrives after the run and prints no coverage matrix, so the user
+    who asked to CHECK the numbers gets neither the numbers nor the check.
+
+    The resolution is not a weaker guard: it is that a diagnostic has no business writing the
+    ledger. ``--quick`` redirects to a ``.quick.json`` sibling, so the committed evidence is
+    never in the blast radius of a reproducibility check and the user still gets their matrix.
+    """
+
+    def test_quick_redirects_away_from_the_committed_ledger(self) -> None:
+        from dataforge.cli.bench import _DEFAULT_OUTPUT_JSON
+
+        assert Path("eval/results/agent_comparison.json") == _DEFAULT_OUTPUT_JSON
+        redirected = _DEFAULT_OUTPUT_JSON.with_name(
+            f"{_DEFAULT_OUTPUT_JSON.stem}.quick{_DEFAULT_OUTPUT_JSON.suffix}"
+        )
+        assert redirected != _DEFAULT_OUTPUT_JSON
+        assert redirected.name == "agent_comparison.quick.json"
+
+    def test_the_quick_artifact_is_ignored_by_git(self) -> None:
+        """A diagnostic that dirties the working tree gets committed by accident.
+
+        Once committed it becomes a second evidence file one seed deep, sitting beside a
+        twelve-record ledger with the same record ordering -- precisely the confusion that made
+        the positional anchor retarget silently.
+        """
+        ignore_file = Path(__file__).resolve().parents[2] / ".gitignore"
+        patterns = ignore_file.read_text(encoding="utf-8").splitlines()
+        assert "eval/results/*.quick.json" in patterns, (
+            "the --quick diagnostic artifact must be gitignored"
+        )
+
+    def test_an_explicit_output_path_is_still_honoured(self) -> None:
+        """The redirect must not hijack a path the user chose deliberately."""
+        import inspect
+
+        from dataforge.cli.bench import bench
+
+        source = inspect.getsource(bench)
+        assert "if output_json == _DEFAULT_OUTPUT_JSON:" in source, (
+            "the redirect must be conditional on the default, so --output-json still wins"
+        )

@@ -17,6 +17,10 @@ from rich.table import Table
 _console = Console(stderr=True)
 run_agent_comparison: Callable[..., Any] | None = None
 
+# The committed evidence ledger. Named once so the --quick redirect below compares
+# against the declared default rather than a second copy of the same string.
+_DEFAULT_OUTPUT_JSON = Path("eval/results/agent_comparison.json")
+
 
 def _parse_csv_list(raw_value: str) -> list[str]:
     """Parse a comma-separated CLI option into a list of strings."""
@@ -145,9 +149,10 @@ def bench(
         Path,
         typer.Option(
             "--output-json",
-            help="Where to write eval/results/agent_comparison.json.",
+            help="Where to write benchmark records. Defaults to the committed evidence ledger; "
+            "--quick redirects to a .quick.json sibling so a diagnostic never rewrites it.",
         ),
-    ] = Path("eval/results/agent_comparison.json"),
+    ] = _DEFAULT_OUTPUT_JSON,
     cache_root: Annotated[
         Path | None,
         typer.Option(
@@ -190,6 +195,15 @@ def bench(
         datasets = datasets if datasets != "hospital" else "hospital,flights"
         seeds = 1
         seed_list = None
+        # A diagnostic must not write the shared evidence ledger. --quick runs one seed, so
+        # writing to the default path either destroys the committed multi-seed artifact (what
+        # happened on 2026-09-13) or, once the guard covers seeds, is refused after a minute of
+        # work and prints no coverage matrix at all. Neither is what the user asked for: they
+        # asked to CHECK the numbers, not to republish them. So --quick writes beside the
+        # ledger and leaves it untouched, and the committed evidence is never in the blast
+        # radius of a reproducibility check.
+        if output_json == _DEFAULT_OUTPUT_JSON:
+            output_json = output_json.with_name(f"{output_json.stem}.quick{output_json.suffix}")
     try:
         # Load .env at the CLI boundary (not in the library runner) so real runs
         # pick up provider credentials while the library stays hermetic for tests.

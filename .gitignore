@@ -101,3 +101,9 @@ archive/training/kaggle_*_kernel/
 # Per-night input for the cloud automation pipeline; the task changes daily and is
 # uploaded to the workspace stage by publish_run_inputs.ps1, not tracked here.
 scripts/automation/TASK.md
+
+# Diagnostic output of `dataforge bench --quick`. A reproducibility CHECK must not dirty the
+# working tree, and must never be mistaken for the committed multi-seed evidence ledger it sits
+# beside: the quick run is one seed, and a positional anchor into it would address a different
+# record than the same index in agent_comparison.json.
+eval/results/*.quick.json
