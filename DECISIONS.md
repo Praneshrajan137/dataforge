@@ -33,6 +33,81 @@ Because these lines must stand, `tests/unit/test_claim_comparability_guard.py` d
 excludes this file from its line-level scan and polices the surfaces that state current
 claims instead. That exclusion is recorded in the test, not implied.
 
+A third class of staleness was identified on 2026-09-13 and is different in kind from the two
+above: **some reversal criteria can no longer fire.** A criterion is the mechanism by which a
+decision is supposed to be revisited, so one that cannot be satisfied is not merely stale prose --
+it is a decision that has quietly become permanent. Named instances are in the 2026-09-13 entry
+below. Reading a reversal criterion as live therefore requires checking that its dataset, gate and
+benchmark still exist.
+
+---
+
+## 2026-09-13 - Audit closure: the pre-registration discipline verified structurally, and reversal criteria that cannot fire
+
+**Context**: an end-to-end independent audit. Two areas had been assigned repeatedly and never
+completed: all 21 files under `eval/preregistration/` (only one had been read, which was the stated
+limit on the audit's strongest claim) and this file in full. Both are now closed.
+
+**What the pre-registration sweep found**: of 21 pre-registrations, 13 honoured, **5 kill criteria
+fired and were honoured**, 3 honestly unresolved, **0 quietly relaxed and 0 restated after the
+result**. The structural test -- `git log -p --diff-filter=M` over every file, rather than reading
+the prose claim of append-only discipline -- found **zero post-hoc edits to original text**; every
+modification is an appended amendment. Nine recorded outcomes ran against the author's interest,
+including a kill criterion that fired on a headline capability and one pre-registration whose own
+hypothesis was refuted. Verdict: the discipline is a genuine epistemic practice rather than
+self-presentation, and it is now verified by mechanism instead of by assertion.
+
+**What the sweep of this file found**: every reversal criterion naming a CI gate (`docs_truth`,
+`anchor_truth`, `backend_gate`) still exists and still runs, so no live gate has been disconnected
+from the criterion that depends on it. Two defects were found instead, both of the
+"criterion cannot fire" class:
+
+- **Criteria naming an excluded dataset.** One entry reverses the deterministic-first ordering only
+  if a trained policy *"demonstrably beats the deterministic baseline on hospital/beers/flights
+  with no safety regression"*. `beers` was excluded from the project on 2026-07-12 and is absent
+  from `dataforge/datasets/registry.py`, so this criterion cannot be satisfied as written: no
+  evidence is admissible on a dataset the project refuses to benchmark. The same triple appears in a
+  nearby pattern-match criterion. Locate both with
+  `git grep -n "hospital/beers/flights" -- DECISIONS.md`.
+- **A criterion whose named benchmark has no locatable runner.** Another entry revisits the solver
+  choice *"if Z3 fails the benchmark target (`p95 < 200 ms` on the 1,000-row / 2-FD benchmark)"*. No
+  CI job measuring that specific benchmark was located. A nearby SMT budget check exists in
+  `scripts/ci/backend_gate.py` but records mean and max against a 200 ms budget rather than p95 on
+  the named shape, so it is not the same measurement. Recorded as unverified rather than dead.
+  Locate with `git grep -n "p95 < 200 ms" -- DECISIONS.md`.
+
+**A note on how these are cited.** The first draft of this entry referenced all three criteria by
+line number. Inserting this entry at the top of a newest-first file shifted every one of them
+immediately -- `hospital/beers/flights` moved by 64 lines before the amendment was even saved. In an
+append-only newest-first log, **every future entry invalidates every line-number reference in the
+file**, so positional citation is structurally wrong here and the references above are anchored to
+quoted content and a `git grep` instead. This is the same defect as the positional evidence anchor
+`records/3/f1` found on 2026-09-13, which silently retargeted from hospital to flights when a
+benchmark run shortened the array. Cite content, not position.
+
+**Decision**: record both here as an amendment rather than editing the entries, per the
+append-only policy, and add the reading instruction to the standing notice above. Do not rewrite
+the criteria: replacing `beers` in a historical entry would misrepresent what was decided on its
+date, and the correct fix is a forward-looking criterion in a future entry if that ordering is ever
+revisited.
+
+**Alternatives**: (a) edit the two criteria in place -- rejected, PRODUCT.md section 5 forbids
+rewriting frozen evidence; (b) add a gate that fails when a reversal criterion names an excluded
+dataset -- rejected for now, because the population is prose and a gate over prose would be either
+unfalsifiable or a blocker on ordinary wording; (c) do nothing -- rejected, a decision that has
+silently become permanent is exactly the kind of thing this log exists to prevent.
+
+**Reasoning**: the value of a reversal criterion is that someone can check it. Both defects remove
+that ability without removing the appearance of it, which is the same shape as every other defect
+this audit found: a correct mechanism whose reachability was never verified.
+
+**Reviewed with**: the pre-registration corpus, `git log -p` over all 21 files, and
+`scripts/ci/backend_gate.py`.
+
+**Reversal criteria**: if a future entry revisits the deterministic-first ordering, it must state a
+dataset triple drawn from the live registry; if the Z3 p95 benchmark is given a runner in CI, this
+entry's second bullet is discharged and should be marked so in a later amendment.
+
 ---
 
 ## 2026-09-08 - A capped batch is now held for review, and the guardrail demo proves something again

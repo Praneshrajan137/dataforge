@@ -99,6 +99,28 @@ The new sentence is narrower and checkable. "Verifiable" now means something spe
 a published format, two independent implementations, and committed conformance vectors
 covering every rejection case.
 
+**And one scope limit on "without trusting DataForge", added 2026-09-12 because the
+sentence invites a stronger reading than the artifact supports.** All three conditions
+hold: `specs/SPEC_repair_attestation.md` plus a JSON Schema, an in-toto `Statement/v1`
+envelope, a Python implementation and an independently-written TypeScript one
+(`playground/web/src/attestation/verify.ts`), and 26 committed vectors covering all 11
+normative checks, with `scripts/ci/attestation_conformance.py` running **both**
+implementations in `backend_gate.py` and treating a missing `npx` as a failure rather than
+a skip. Their agreement is *by construction* rather than by luck: signing covers a
+DSSE-style pre-authentication encoding, not JSON text, which removes canonicalisation from
+the trust base entirely.
+
+What a second implementation independently checks is the attestation's **integrity and
+coherence** -- envelope, version, schema completeness, vocabulary closure,
+subject-to-post-state digest match, reversibility completeness, verdicts, earned strength,
+constraints present, signature, witness coherence. What it does **not** do is re-discharge
+the proof: deep re-verification re-runs the solver (`certificate.py`) and is Python-only by
+design. So a third party can confirm without trusting us that the attestation is
+well-formed, internally consistent, and describes the artifact it names -- and must still
+trust our verifier that the SMT obligation was actually discharged. `README.md` already
+states this correctly ("no solver"); this file did not.
+
+
 ### 1.2 What the protocol does NOT claim
 
 Stated here because a protocol that implies guarantees it lacks is worse than no
@@ -166,8 +188,28 @@ makes a refusal that was previously **incidental** -- a by-product of the repair
 guarantee.
 
 What a user gets by default is detection, a named refusal reason, and a one-line way to
-authorise the writes deliberately. What a user loses is one repair on the reference corpus, and a
-repair that would have happened without them saying what was true about their data.
+authorise the writes deliberately. What a user loses is one repair on the reference corpus,
+and a repair that would have happened without them saying what was true about their data.
+
+**That first sentence was false on the human CLI until 2026-09-12, and the gap is worth
+recording because it is this file's own defect class.** `receipt.machine_outcome` carried
+the outcome code and next actions on every run, and
+`dataforge/domain/vocabulary.py` has held human-readable English for every member of both
+vocabularies (`OUTCOME_CODE_HUMAN`, `NEXT_ACTION_HUMAN`) just as long. **Nothing rendered
+either.** One grep for `OUTCOME_CODE_HUMAN` returned no consumers -- the check section 1.3
+prescribes -- and `scripts/ci/generate_domain_vocabulary.py` said so in as many words:
+the labels were "withheld for the same reason: no browser consumer renders them yet".
+Measured against a schema-less CSV with three detected issues, `--json` reported
+`next_actions = ["needs_declared_premise"]` while the terminal printed `No fixes proposed.`
+and never used the word *schema*. So the product computed the exact remedy the operator
+needed and handed it only to machines.
+
+This is section 10's distinction applied to this file's own promise: the absence of a
+consumer had been **disclosed** rather than **reallocated**, which is the pattern that got
+the training subsystem excised. `dataforge/ui/outcome.py` gives those labels their
+consumer, deriving both populations via `get_args()` so a new code without a label fails a
+test rather than silently rendering nothing.
+
 
 Two consequences worth naming rather than discovering:
 
@@ -533,12 +575,27 @@ reached by design, which is precisely why it has to be stated rather than drawn 
   Their premises were supplied by a user or an oracle; ours was mined from the dirty table.
   That is a harder problem and it is where our measured failures live -- so the honest
   reading is not "we are behind", it is that the numbers answer different questions.
-- **LLM-based cleaners are now ahead of us too, and one of them corroborates abstention.**
-  Cocoon (arXiv:2410.15547) outscores DataForge on hospital. On flights it abstains, arguing
-  the benchmark's arrival-time dependency is ambiguous and that preserving the uncertainty is
-  preferable -- the same conclusion this project reached about the same dependency, reached
-  independently by a system that beats it on accuracy. That convergence is better evidence for
-  the abstention thesis than any score of ours, and it is not protocol-comparable either.
+- **LLM-based cleaners are now ahead of us too, and one of them partially corroborates
+  abstention.** Cocoon (arXiv:2410.15547) outscores DataForge on hospital: **F1 0.90**
+  against Raha+Baran's 0.72 and HoloClean's 0.63 in its own Table 1.
+
+  **Corrected 2026-09-12, because this bullet overstated the corroboration in the
+  direction that flattered us.** It previously said "On flights it abstains, arguing the
+  benchmark's arrival-time dependency is ambiguous and that preserving the uncertainty is
+  preferable -- the same conclusion this project reached about the same dependency,"
+  and called that "better evidence for the abstention thesis than any score of ours."
+  Cocoon does **not** abstain on flights. It reports **F1 0.57 at precision 0.91 and
+  recall 0.42**, and it **loses** to Raha+Baran's 0.70. What its authors describe is a
+  "more semantically cautious approach to ambiguous corrections" -- reduced *recall* from
+  caution, which is a weaker and different thing than declining to answer. They do
+  attribute the gap to ambiguity in the benchmark's flight-number/arrival-time dependency,
+  which is the same dependency this project singled out, so the convergence is real; it is
+  convergence on *where the ambiguity lies*, not on abstention as the response to it.
+  Cocoon also beats DataForge on flights (0.57 against our 0.4467 with
+  `allow_entity_consensus`, 0.0000 deterministic), which the previous wording left out.
+  None of it is protocol-comparable. Verified against the paper, not restated from this
+  repository.
+
 - **Conformal / guaranteed automatic repair is prior art, and must be cited as such.**
   Jäger & Biessmann, *From Data Imputation to Data Cleaning* (AISTATS 2024, PMLR v238),
   proposes Conformal Data Cleaning: cell-level automatic identification *and fixing* of

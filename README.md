@@ -94,13 +94,40 @@ batch of correct, corrupting, stale, and invalid proposals yields **zero
 corruptions** — only the schema-proven fixes apply, the rest are held, and the
 applied set re-verifies and reverts.
 
+## From zero writes to proven writes
+
+DataForge writes nothing by default, and that is the design rather than a defect: a
+constraint DataForge *mined* from your dirty table confers no authority to change it, because
+no in-table quality measure has been shown to transfer to a table it was not fitted on. Only
+a premise **you** declare can authorise a proven write.
+
+That left an unpaved gap — the only route to a proven repair was a hand-authored schema file,
+with no starting point. `dataforge schema init` produces one:
+
+```bash
+dataforge schema init data.csv            # writes data.schema.yaml
+# edit it, then:
+dataforge repair data.csv --schema data.schema.yaml --dry-run
+```
+
+The draft **authorises nothing when generated, by construction.** Every column is declared
+`string`, and a `string` declaration cannot reject any CSV value — so it confers no proof and
+DataForge will not auto-apply on its strength. Everything DataForge observed about your data
+is included commented out, with the evidence behind each suggestion, for you to accept
+deliberately. Tightening a declaration is your assertion that it is true, and that assertion
+is what turns a guess into a premise.
+
+A repair run that writes nothing now says why and what would change it, rather than leaving
+you to infer it: the refusal reason and the next action are printed, and withheld fixes are
+summarised by the reason they were withheld.
+
 ## Current Status
 
 Shipped in the current worktree:
 
-- `dataforge profile`, `dataforge repair`, `dataforge verify-apply`,
-  `dataforge revert`, `dataforge watch`, `dataforge audit`, `dataforge bench`,
-  and `dataforge quickstart`
+- `dataforge profile`, `dataforge repair`, `dataforge schema init`,
+  `dataforge verify-apply`, `dataforge revert`, `dataforge watch`, `dataforge audit`,
+  `dataforge bench`, and `dataforge quickstart`
 - Twelve issue families across an additive ensemble — eleven from the default detectors, plus
   `semantic_domain_violation`, which is opt-in because it needs a fetched, hash-verified
   constraint artifact. **Two may auto-apply**:

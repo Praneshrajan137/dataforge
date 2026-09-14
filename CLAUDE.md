@@ -92,7 +92,7 @@ the date.
 
 ## Performance Notes
 
-- Detector pass on a 10k-row CSV should finish in under 2 seconds.
+- Detector pass on a 10k-row CSV should finish in under 2 seconds — a budget, not a measurement; first measured 2026-09-12 at 0.265 s (10k rows, 2,326 issues), so re-measure rather than re-quote when detectors are added.
 - SMT verification can become expensive if FDs are expanded into concrete row
   pairs. Prefer symbolic constraints where possible.
 - Rich tables are slow for large output. Summarize or paginate beyond a few
