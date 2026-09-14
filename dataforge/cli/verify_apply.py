@@ -18,6 +18,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from dataforge.cli.common import load_schema, resolve_cli_path
+from dataforge.cli.emit import attest_result, result_json, write_attestation
 from dataforge.detectors.base import Schema
 from dataforge.schema_inference import ConstraintReviewArtifact, load_constraint_review_artifact
 from dataforge.ui.repair_diff import render_repair_diff
@@ -27,6 +28,27 @@ if TYPE_CHECKING:
     from dataforge.engine.repair import ExternalFix
 
 _console = Console(stderr=True)
+
+
+def _report_attestation(
+    attest_out: Path | None,
+    attest_error: str | None,
+    output_console: Console,
+) -> None:
+    """Say where the proof went, or why it did not exist.
+
+    A user who passed ``--attest-out`` and sees no mention of it cannot tell success from
+    silence. Reporting the withholding reason matters more than reporting the success: the
+    common case is a dry run, where the correct answer is "nothing was applied, so there is
+    no post-state to attest" and the remedy is ``--apply``.
+    """
+    if attest_out is None:
+        return
+    if attest_error is None:
+        output_console.print(f"[dim]Attestation written to: {attest_out}[/dim]")
+        output_console.print(f"[dim]Verify with: dataforge attest verify {attest_out}[/dim]")
+        return
+    output_console.print(f"[yellow]No attestation written: {attest_error}[/yellow]")
 
 
 def _print_error(message: str, *, hint: str | None = None) -> None:
@@ -138,7 +160,10 @@ def verify_apply(
     ] = False,
     proposer: Annotated[
         str,
-        typer.Option("--proposer", help="Attribution recorded on the certificate."),
+        typer.Option(
+            "--proposer",
+            help="Attribution recorded on the receipt and in the attestation's predicate.",
+        ),
     ] = "external",
     confirm_escalations: Annotated[
         bool,
@@ -160,6 +185,13 @@ def verify_apply(
         bool,
         typer.Option("--json", help="Print the repair result as JSON."),
     ] = False,
+    attest_out: Annotated[
+        Path | None,
+        typer.Option(
+            "--attest-out",
+            help="Write the portable attestation to this path so the proof can leave the machine.",
+        ),
+    ] = None,
 ) -> None:
     """Verify externally-proposed fixes through the shared gate and apply the proven ones."""
     if dry_run == apply:
@@ -171,6 +203,7 @@ def verify_apply(
 
     try:
         parsed_schema = _resolve_schema(schema)
+        resolved_schema_path = resolve_cli_path(schema) if schema is not None else None
         constraints_artifact, _constraints_sha256 = _resolve_constraints(constraints)
         external_fixes = _load_fixes(fixes)
         resolved_path = resolve_cli_path(Path(path))
@@ -202,8 +235,23 @@ def verify_apply(
         )
         raise typer.Exit(code=1 if apply else 2) from exc
 
+    # The proof is emitted here, on the guardrail path, because this is the surface built for
+    # an untrusted proposer: its consumers exist for the evidence, not for the exit code. Only
+    # computed when a consumer asked for it -- attesting hashes the result file, and the human
+    # who passed neither --json nor --attest-out has not asked to pay for it.
+    attestation = (
+        attest_result(result, source_path=resolved_path, schema_path=resolved_schema_path)
+        if (json_output or attest_out is not None)
+        else None
+    )
+    attest_error = (
+        write_attestation(attestation, resolve_cli_path(attest_out))
+        if attest_out is not None and attestation is not None
+        else None
+    )
+
     if json_output:
-        typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+        typer.echo(result_json(result, attestation=attestation))
         raise typer.Exit(code=0 if result.receipt.applied else 1)
 
     output_console = Console()
@@ -241,6 +289,7 @@ def verify_apply(
         )
         if result.receipt.revert_command:
             output_console.print(f"[dim]Revert with: {result.receipt.revert_command}[/dim]")
+        _report_attestation(attest_out, attest_error, output_console)
         raise typer.Exit(code=0)
 
     output_console.print(
@@ -250,4 +299,5 @@ def verify_apply(
             style="yellow",
         )
     )
+    _report_attestation(attest_out, attest_error, output_console)
     raise typer.Exit(code=1)

@@ -40,7 +40,7 @@ def workspace(tmp_path: Path) -> Path:
 def _apply(workspace: Path) -> dict[str, object]:
     """Apply the one provable repair through the shipped pipeline and return the payload."""
     from dataforge.cli.common import load_schema
-    from dataforge.cli.repair import _attest_result
+    from dataforge.cli.emit import attest_result
     from dataforge.engine.repair import RepairPipelineRequest, run_repair_pipeline
 
     source = workspace / SOURCE
@@ -54,7 +54,7 @@ def _apply(workspace: Path) -> dict[str, object]:
     )
     assert result.receipt.applied, result.receipt.reason
     assert result.receipt.fixes_count == 1, "the fixture must produce exactly one repair"
-    return _attest_result(result, source_path=source, schema_path=workspace / SCHEMA)
+    return attest_result(result, source_path=source, schema_path=workspace / SCHEMA)
 
 
 class TestRepairEmitsAnAttestationWithoutASecondCommand:
@@ -113,7 +113,7 @@ class TestRepairEmitsAnAttestationWithoutASecondCommand:
     def test_a_dry_run_is_not_attested_and_says_why(self, workspace: Path) -> None:
         """An attestation over an unchanged file invites being read as a repair certificate."""
         from dataforge.cli.common import load_schema
-        from dataforge.cli.repair import _attest_result
+        from dataforge.cli.emit import attest_result
         from dataforge.engine.repair import RepairPipelineRequest, run_repair_pipeline
 
         result = run_repair_pipeline(
@@ -125,7 +125,7 @@ class TestRepairEmitsAnAttestationWithoutASecondCommand:
             )
         )
 
-        payload = _attest_result(
+        payload = attest_result(
             result, source_path=workspace / SOURCE, schema_path=workspace / SCHEMA
         )
 

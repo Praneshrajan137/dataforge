@@ -169,7 +169,8 @@
   },
   "dataforge/cli/repair.py": {
     "direct_tests": [
-      "tests/unit/test_cli_repair.py"
+      "tests/unit/test_cli_repair.py",
+      "tests/integration/test_write_surfaces_emit_proof.py"
     ],
     "property_tests": [
       "tests/property/test_revert_is_bytes_identical.py"
@@ -926,6 +927,17 @@
     ],
     "regression_tests": [
       "tests/regression/test_env.py"
+    ]
+  },
+  "dataforge/cli/emit.py": {
+    "direct_tests": [
+      "tests/integration/test_guardrail_attestation.py",
+      "tests/integration/test_write_surfaces_emit_proof.py",
+      "tests/integration/test_attestation_reaches_consumers.py",
+      "tests/unit/test_attestation_schema.py"
+    ],
+    "integration_tests": [
+      "tests/integration/test_surface_uniformity.py"
     ]
   }
 }

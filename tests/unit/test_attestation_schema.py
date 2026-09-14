@@ -43,7 +43,7 @@ def schema() -> dict[str, Any]:
 def _real_attestation(tmp_path: Path) -> dict[str, Any]:
     """Produce an attestation the way a user does: run a repair and take what it emits."""
     from dataforge.cli.common import load_schema
-    from dataforge.cli.repair import _attest_result
+    from dataforge.cli.emit import attest_result
     from dataforge.engine.repair import RepairPipelineRequest, run_repair_pipeline
 
     source = tmp_path / "premised_fd_10rows.csv"
@@ -59,7 +59,7 @@ def _real_attestation(tmp_path: Path) -> dict[str, Any]:
             allow_llm=False,
         )
     )
-    payload = _attest_result(result, source_path=source, schema_path=schema_file)
+    payload = attest_result(result, source_path=source, schema_path=schema_file)
     statement = payload.get("attestation")
     assert isinstance(statement, dict), payload.get("attestation_unavailable")
     return statement

@@ -51,7 +51,14 @@ def _profile_once(path: Path, schema: Schema | None, json_output: bool) -> None:
     render_profile_table(issues, Console(), file_path=str(path))
 
 
-def _repair_once(path: Path, schema: Schema | None, apply: bool, json_output: bool) -> None:
+def _repair_once(
+    path: Path,
+    schema: Schema | None,
+    apply: bool,
+    json_output: bool,
+    schema_path: Path | None = None,
+) -> None:
+    from dataforge.cli.emit import attest_result
     from dataforge.engine.repair import RepairPipelineRequest, run_repair_pipeline
 
     result = run_repair_pipeline(
@@ -65,16 +72,25 @@ def _repair_once(path: Path, schema: Schema | None, apply: bool, json_output: bo
     if json_output:
         payload = result.model_dump(mode="json")
         payload["event"] = "repair"
+        # A watcher applying repairs unattended is the case where an audit trail matters most:
+        # nobody is reading the terminal. Each applied event carries its own portable proof, so
+        # the event stream is verifiable after the fact rather than merely readable.
+        payload.update(attest_result(result, source_path=path, schema_path=schema_path))
         typer.echo(json.dumps(payload, indent=2, sort_keys=True))
         return
     render_repair_diff(result.fixes, Console(), file_path=str(path))
 
 
 def _run_once(
-    path: Path, schema: Schema | None, action: WatchAction, apply: bool, json: bool
+    path: Path,
+    schema: Schema | None,
+    action: WatchAction,
+    apply: bool,
+    json: bool,
+    schema_path: Path | None = None,
 ) -> None:
     if action == "repair":
-        _repair_once(path, schema, apply, json)
+        _repair_once(path, schema, apply, json, schema_path)
     else:
         _profile_once(path, schema, json)
 
@@ -126,7 +142,7 @@ def watch(
         )
         raise typer.Exit(code=2)
 
-    _run_once(resolved_path, parsed_schema, action, apply, json_output)
+    _run_once(resolved_path, parsed_schema, action, apply, json_output, schema)
     if once:
         return
 
@@ -141,4 +157,4 @@ def watch(
         if current_mtime == last_mtime:
             continue
         last_mtime = current_mtime
-        _run_once(resolved_path, parsed_schema, action, apply, json_output)
+        _run_once(resolved_path, parsed_schema, action, apply, json_output, schema)

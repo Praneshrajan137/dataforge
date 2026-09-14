@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, cast
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 
 from dataforge.cli.common import load_schema, resolve_cli_path
+from dataforge.cli.emit import attest_result, result_json
 from dataforge.detectors.base import Issue, Schema
 from dataforge.repairers.base import ProposedFix, RepairAttempt
 from dataforge.safety import SafetyContext, SafetyFilter, SafetyResult
@@ -22,6 +22,7 @@ from dataforge.stores import (
     run_table_store_repair,
     store_from_uri,
 )
+from dataforge.ui.outcome import render_held_fixes, render_machine_outcome
 from dataforge.ui.repair_diff import render_repair_diff
 
 if TYPE_CHECKING:
@@ -221,75 +222,6 @@ def _render_failure_summary(result: RepairPipelineResult, console: Console) -> i
             overflow="fold",
         )
     return len(result.failures)
-
-
-def _json_result(result: RepairPipelineResult, *, attestation: dict[str, Any] | None = None) -> str:
-    """Serialize a repair result for CLI/MCP/CI consumers.
-
-    ``attestation`` is merged as a SIBLING of the receipt rather than a receipt field:
-    ``tests/integration/test_surface_uniformity.py`` asserts the pipeline, agent and
-    external-guardrail certificates share one schema and one field set, so adding to the
-    receipt would break the parity that makes those three surfaces comparable.
-    """
-    payload = result.model_dump(mode="json")
-    if attestation is not None:
-        payload.update(attestation)
-    return json.dumps(payload, indent=2, sort_keys=True)
-
-
-def _attest_result(
-    result: RepairPipelineResult,
-    *,
-    source_path: Path,
-    schema_path: Path | None,
-) -> dict[str, Any]:
-    """Attest a completed repair, or say why not.
-
-    Called on every ``--json`` run so the portable proof reaches a consumer without a second
-    command. ``dataforge attest build`` remains for attesting a receipt saved earlier.
-
-    Only an APPLIED repair is attested. A dry run has written nothing, so its subject digest
-    would be the source rather than a result, and an attestation over an unchanged file
-    invites being read as a certificate of a repair that did not happen.
-
-    The declared premise is embedded from the schema FILE rather than from the parsed
-    ``Schema`` object, because the dataclass has no JSON projection and inventing one would
-    put an unreviewed wire format on the critical path of a normative artifact. Embedding it
-    is not optional in general: ``_check_strength`` requires the constraints for any fix whose
-    provenance is untrusted and which is proven by schema rather than by construction, which
-    is precisely the external-proposer case. Without them the emission is withheld and the
-    reason names ``constraints_present`` -- correct behaviour, but useless to a caller who did
-    supply a schema.
-    """
-    from dataforge import __version__
-    from dataforge.attestation import attest_repair
-    from dataforge.cli.common import load_schema, load_schema_mapping
-    from dataforge.witness import witnesses_for_applied_fixes
-
-    if not result.receipt.applied:
-        return {
-            "attestation_unavailable": (
-                "nothing was applied, so there is no post-state to attest. Re-run with "
-                "--apply to obtain a portable attestation."
-            )
-        }
-
-    applied = [fix.model_dump(mode="json") for fix in result.receipt.applied_fixes]
-    emission = attest_repair(
-        result.receipt.model_dump(mode="json"),
-        subject_name=source_path.name,
-        tool_version=__version__,
-        produced_at=datetime.now(UTC).isoformat(),
-        constraints=load_schema_mapping(schema_path) if schema_path is not None else None,
-        journal_head_sha256=None,
-        data_bytes=source_path.read_bytes() if source_path.is_file() else None,
-        witnesses=witnesses_for_applied_fixes(
-            source_path,
-            applied,
-            load_schema(schema_path) if schema_path is not None else None,
-        ),
-    )
-    return emission.as_dict()
 
 
 def _run_agent_repair(
@@ -727,9 +659,9 @@ def repair(
 
     if json_output:
         typer.echo(
-            _json_result(
+            result_json(
                 result,
-                attestation=_attest_result(result, source_path=resolved_path, schema_path=schema),
+                attestation=attest_result(result, source_path=resolved_path, schema_path=schema),
             )
         )
         raise typer.Exit(code=0 if result.fixes else 1)
@@ -752,6 +684,27 @@ def repair(
             output_console.print(f"[green]Triaged all {ranked} flagged cells.[/green]")
     render_repair_diff(result.fixes, output_console, file_path=str(resolved_path))
     failed_issue_count = _render_failure_summary(result, output_console)
+
+    # Any run that wrote nothing owes the operator a reason and a way forward, and the
+    # engine has already derived both -- `receipt.machine_outcome` carries the outcome code
+    # and the next actions from `safety.disposition.outcome_for_batch`. Until 2026-09-12
+    # nothing on the human surface read that field: measured against a schema-less CSV with
+    # three detected issues, `--json` reported `next_actions=["needs_declared_premise"]`
+    # while the terminal printed `No fixes proposed.` and never used the word *schema*.
+    # That made PRODUCT.md 1.5's promise of "a named refusal reason, and a one-line way to
+    # authorise the writes deliberately" false on the primary surface.
+    #
+    # It is rendered here, before the two exits below, because BOTH zero-fix paths need it:
+    # the `failed_issue_count == 0` branch raises immediately, and the branch where
+    # repairs were attempted and rejected falls through to the dry-run exit. Rendering in
+    # either one alone would leave the other reasonless.
+    if not result.fixes:
+        render_machine_outcome(result.receipt.machine_outcome, output_console)
+
+    # Held fixes are the product's primary honest output when nothing is written, and they
+    # were reachable only through `--json`. Rendered on every run, not just zero-write ones:
+    # a partially-applied run still owes the operator the tally of what it withheld.
+    render_held_fixes(result.receipt.suggested_fixes, output_console)
 
     if not result.fixes and failed_issue_count == 0:
         if result.receipt.reason != "No accepted fixes were produced.":
