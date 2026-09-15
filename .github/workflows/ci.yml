@@ -223,7 +223,16 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install --upgrade pip
+      # The FULL dependency set, matching canonical-backend-gate, and not `.[dev]` alone.
+      # gate_population derives the pytest node id population by collecting the suite, so a
+      # partial install is not a slow gate -- it is a WRONG population. The first CI run of this
+      # job failed exactly that way: without fastapi, three test modules could not be imported,
+      # and the gate refused with "pytest collection failed, so the population is unknown". That
+      # refusal is correct and is why the job is fixed here rather than the gate being relaxed.
       - run: pip install -e ".[dev]"
+      - run: pip install -e "./dataforge-mcp[dev]"
+      - run: pip install -r docs/requirements.txt
+      - run: pip install -r playground/api/requirements.txt
       - name: No gate, test, mutant or claim may vanish unexplained
         run: make gate-population
       - name: No new unsourced number in published prose
