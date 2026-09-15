@@ -11,7 +11,7 @@ ifndef PYTHON
 PYTHON := $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),python)
 endif
 
-.PHONY: help setup setup-all lint format type test test-serial test-mapped test-map-check gate-population frontend-install frontend-build frontend-test frontend-gate backend-gate release-gate playground-release-check sft-preflight coverage coverage-gate mutation-gate bench bench-free mutation clean lock uv-lock
+.PHONY: help setup setup-all lint format type test test-serial test-mapped test-map-check gate-population claim-coverage frontend-install frontend-build frontend-test frontend-gate backend-gate release-gate playground-release-check sft-preflight coverage coverage-gate mutation-gate bench bench-free mutation clean lock uv-lock
 
 help:
 	@echo "DataForge dev targets"
@@ -25,6 +25,7 @@ help:
 	@echo "  test-mapped   Run tests for a changed source file (FILE=path) -- the inner loop"
 	@echo "  test-map-check Verify every dataforge module has a mapping decision"
 	@echo "  gate-population Verify no gate quietly stopped checking something"
+	@echo "  claim-coverage  Refuse a new unsourced number in published prose"
 	@echo "  frontend-gate Run Vite typecheck, unit tests, build budget, and Playwright"
 	@echo "  backend-gate  Run the canonical backend release-quality gate"
 	@echo "  release-gate  Build, audit, offline-install, and smoke-test the wheel"
@@ -66,7 +67,7 @@ format:
 # is separate work rather than something to bundle into an unrelated change. Stated so the gap is
 # a recorded decision, not an oversight.
 type:
-	$(PYTHON) -m mypy --strict dataforge playground/api/app.py scripts/bench/run_sota_comparison.py scripts/bench/generate_report.py scripts/ci/readme_truth.py scripts/ci/benchmark_truth.py scripts/ci/docs_truth.py scripts/ci/anchor_truth.py scripts/release/full_vision_external_gate.py scripts/ci/installed_package_smoke.py scripts/ci/pypi_publish_report.py scripts/ci/openapi_contract.py scripts/ci/backend_gate.py scripts/ci/generate_domain_vocabulary.py scripts/ci/mutate_domain_vocabulary.py scripts/ci/mutate_autoapply_guards.py scripts/ci/generate_attestation_vectors.py scripts/ci/generate_attestation_schema.py scripts/ci/attestation_conformance.py scripts/ci/mutate_adversarial_corpus.py scripts/ci/hf_space_frontmatter.py scripts/ci/gate_population.py scripts/ci/test_map_coverage.py scripts/perf/measure_loop_cost.py scripts/perf/measure_verifier_work.py scripts/measure_payload_split.py scripts/measure_trust_ledger.py scripts/playground/build_samples.py scripts/playground/stage_space.py scripts/playground/verify_space_backend.py scripts/playground/monitor_playground.py scripts/preflight/check_kaggle_auth.py scripts/data/collect_sft_trajectories.py scripts/data/validate_sft_readiness.py scripts/model/verify_sft_release.py scripts/model/publish_dataset_readme.py scripts/publish_model.py
+	$(PYTHON) -m mypy --strict dataforge playground/api/app.py scripts/bench/run_sota_comparison.py scripts/bench/generate_report.py scripts/ci/readme_truth.py scripts/ci/benchmark_truth.py scripts/ci/docs_truth.py scripts/ci/anchor_truth.py scripts/release/full_vision_external_gate.py scripts/ci/installed_package_smoke.py scripts/ci/pypi_publish_report.py scripts/ci/openapi_contract.py scripts/ci/backend_gate.py scripts/ci/generate_domain_vocabulary.py scripts/ci/mutate_domain_vocabulary.py scripts/ci/mutate_autoapply_guards.py scripts/ci/generate_attestation_vectors.py scripts/ci/generate_attestation_schema.py scripts/ci/attestation_conformance.py scripts/ci/mutate_adversarial_corpus.py scripts/ci/hf_space_frontmatter.py scripts/ci/gate_population.py scripts/ci/claim_coverage.py scripts/ci/test_map_coverage.py scripts/perf/measure_loop_cost.py scripts/perf/measure_verifier_work.py scripts/measure_payload_split.py scripts/measure_trust_ledger.py scripts/playground/build_samples.py scripts/playground/stage_space.py scripts/playground/verify_space_backend.py scripts/playground/monitor_playground.py scripts/preflight/check_kaggle_auth.py scripts/data/collect_sft_trajectories.py scripts/data/validate_sft_readiness.py scripts/model/verify_sft_release.py scripts/model/publish_dataset_readme.py scripts/publish_model.py
 
 # `-n logical` rather than `-n auto`: this suite is dominated by subprocess launches and file
 # I/O, not CPU, so logical cores are the right unit. `--dist loadgroup` comes from
@@ -99,6 +100,13 @@ anchor-truth:
 
 gate-population:
 	$(PYTHON) scripts/ci/gate_population.py --check
+
+# Refuses a NEW unsourced number in published prose. The complement of `docs_truth`, which is an
+# allowlist and by construction cannot see a number nobody registered -- the direction the hospital
+# anchor drifted through for 54 days. Ratchets on unsourced DECREASING, never on registered
+# increasing, because the latter is satisfiable by registering the easiest numbers.
+claim-coverage:
+	$(PYTHON) scripts/ci/claim_coverage.py --check
 
 frontend-install:
 	npm --prefix playground/web ci

@@ -35,6 +35,44 @@ def _resolve_gate_python() -> str:
 PYTHON = _resolve_gate_python()
 NPM = "npm.cmd" if os.name == "nt" else "npm"
 
+#: Step names declared by check functions that do NOT go through ``_run`` or ``GateCommand``.
+#:
+#: Added 2026-09-14. ``scripts/ci/gate_population.py`` derived the gate's step population by
+#: AST-scanning this file for ``_run``/``GateCommand`` literals, so the checks appended to
+#: ``checks`` as bare function calls were invisible to it: SEVEN of 47 result-contributing steps,
+#: including the npm audit and the whole pip-audit exception family. Any of them could have been
+#: deleted and the anti-erosion manifest would not have noticed, which is the exact failure that
+#: manifest exists to prevent.
+#:
+#: ``checks`` is a ``list[bool]`` -- the booleans carry no names -- so the population cannot be
+#: read off the runtime values. This registry is the missing half: every contributor to ``checks``
+#: now resolves to a name, and ``gate_population.py`` RAISES on one it cannot resolve rather than
+#: skipping it. That is the difference between an allowlist and a total enumeration.
+#:
+#: See docs/trust/gate-population-was-not-running.md.
+_GATE_STEP_NAMES: dict[str, str] = {}
+
+_CheckFunction = Callable[..., bool]
+
+
+def gate_step(name: str) -> Callable[[_CheckFunction], _CheckFunction]:
+    """Declare the step name of a check that is appended to ``checks`` directly.
+
+    The name is what the step is called in the population manifest and in this gate's output, so
+    it must match the ``==> <name>`` banner the function prints. ``tests/unit/
+    test_gate_invocation_integrity.py`` asserts that correspondence, because two names for one
+    step is how the front-matter check came to run under the population check's name.
+    """
+
+    def decorate(func: _CheckFunction) -> _CheckFunction:
+        if name in _GATE_STEP_NAMES.values():  # pragma: no cover - import guard
+            raise ValueError(f"duplicate gate step name {name!r}")
+        _GATE_STEP_NAMES[func.__name__] = name
+        return func
+
+    return decorate
+
+
 PYTHON_PATHS = [
     "dataforge",
     "tests",
@@ -630,6 +668,7 @@ def coverage_policy_errors(
     return errors
 
 
+@gate_step("playground npm audit")
 def _npm_audit_check(*, optional: bool, timeout_seconds: int) -> bool:
     """Run npm audit and fail only on advisories that are not explicitly triaged."""
     print("\n==> playground npm audit")
@@ -670,6 +709,7 @@ def _npm_audit_check(*, optional: bool, timeout_seconds: int) -> bool:
     return True
 
 
+@gate_step("coverage policy")
 def _coverage_policy_check() -> bool:
     """Print and return the coverage policy drift result."""
     print("\n==> coverage policy")
@@ -682,6 +722,7 @@ def _coverage_policy_check() -> bool:
     return True
 
 
+@gate_step("pip-audit exception policy")
 def _pip_audit_exception_check() -> bool:
     """Print and return the pip-audit exception validation result."""
     print("\n==> pip-audit exception policy")
@@ -694,6 +735,7 @@ def _pip_audit_exception_check() -> bool:
     return True
 
 
+@gate_step("dependency audit scope")
 def _pip_audit_scope_check(*, optional: bool) -> bool:
     """Print and return the dependency-audit scope result.
 
@@ -713,6 +755,7 @@ def _pip_audit_scope_check(*, optional: bool) -> bool:
     return optional
 
 
+@gate_step("pip-audit exception liveness")
 def _pip_audit_liveness_check() -> bool:
     """Print and return the pip-audit exception liveness result."""
     print("\n==> pip-audit exception liveness")
@@ -726,6 +769,7 @@ def _pip_audit_liveness_check() -> bool:
     return True
 
 
+@gate_step("corrector auto-apply promotion gate")
 def _corrector_promotion_gate() -> bool:
     """Enforce that no LLM corrector class auto-applies without committed evidence."""
     print("\n==> corrector auto-apply promotion gate")
@@ -941,6 +985,7 @@ def _git_ignored_files() -> frozenset[Path] | None:
     )
 
 
+@gate_step("secret scan")
 def _secret_scan() -> bool:
     """Scan first-party files for high-confidence secret material."""
     print("\n==> secret scan")
@@ -1174,6 +1219,11 @@ def main() -> int:
                     "benchmark truth", [PYTHON, "scripts/ci/benchmark_truth.py", "--check"]
                 ),
                 GateCommand("docs truth", [PYTHON, "scripts/ci/docs_truth.py", "--check"]),
+                # The direction `docs truth` structurally lacks. It is an allowlist, so it cannot
+                # see a number nobody registered -- which is how the hospital anchor was stale for
+                # 54 days with every gate green. This enumerates the decimal figures actually
+                # printed in the published prose and refuses a NEW unsourced one.
+                GateCommand("claim coverage", [PYTHON, "scripts/ci/claim_coverage.py", "--check"]),
                 # Added 2026-09-07. The three gates above all read
                 # eval/results/agent_comparison.json and all compared it to something other
                 # than the code: benchmark truth to the generated report, docs truth to prose,
@@ -1195,14 +1245,38 @@ def main() -> int:
                 # node ids, gate step names, mutant ids and their test paths, claim ids, scanned
                 # documents -- so a shrinking gate has to be an explicit, explained edit rather
                 # than a side effect.
+                #
+                # CORRECTED 2026-09-14, and the defect is the worst kind this file can carry.
+                # Until today this step read:
+                #
+                #     [PYTHON, "scripts/ci/hf_space_frontmatter.py",
+                #      "scripts/ci/gate_population.py", "--check"]
+                #
+                # That is ONE interpreter invocation. `hf_space_frontmatter.py` was the script and
+                # `gate_population.py --check` were argv entries it never reads -- its `main()`
+                # takes no parameters and there is no argparse. So the step printed "HF Space YAML
+                # front-matter valid", reported PASS under the name "gate population", and
+                # `gate_population.py` NEVER RAN. It also appears in no workflow: the only mention
+                # of it in `.github/workflows/` is a comment. `Makefile:100` has a target CI does
+                # not invoke.
+                #
+                # The blast radius is not this step. `ci.yml` and `Makefile` both justify OTHER
+                # decisions with the words "was frozen against removal by
+                # scripts/ci/gate_population.py" -- citing this gate as the trustworthy freezing
+                # mechanism in the same sentence that explains why unexecuted protection is
+                # worthless. Every "frozen against removal" claim in this repository was false.
+                # The 136 un-emitted additions found on 2026-09-14 were the symptom nobody saw.
+                #
+                # See docs/trust/gate-population-was-not-running.md.
                 GateCommand(
                     "gate population",
-                    [
-                        PYTHON,
-                        "scripts/ci/hf_space_frontmatter.py",
-                        "scripts/ci/gate_population.py",
-                        "--check",
-                    ],
+                    [PYTHON, "scripts/ci/gate_population.py", "--check"],
+                ),
+                # Collapsed into the step above by the same defect, so it was running while being
+                # attributed to a different name.
+                GateCommand(
+                    "HF Space front-matter",
+                    [PYTHON, "scripts/ci/hf_space_frontmatter.py"],
                 ),
                 # Keeps the mapped inner loop fast. A module with no mapping falls back to the
                 # full suite, so a gap costs speed rather than correctness; this only stops the

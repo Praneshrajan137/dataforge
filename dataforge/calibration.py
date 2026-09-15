@@ -55,6 +55,21 @@ AbstentionAction = Literal["auto_apply", "review"]
 # provably exact (decimal_shift uses an arithmetic inverse; fd_violation a
 # strict majority) auto-apply at lower confidence; fuzzier families require
 # higher confidence before auto-apply.
+#
+# COMPLETED 2026-09-14. This dict held 8 of the 12 members of ``IssueTypeLiteral``, and the four
+# missing ones -- ``date_transposition``, ``entity_consensus``, ``semantic_domain_violation``,
+# ``time_format_cruft`` -- therefore fell through to ``default_threshold=0.90`` instead of the
+# ``1.01`` never-auto-apply sentinel their siblings carry. Each is refused today by a DIFFERENT
+# mechanism: the first two are in ``engine/repair.py``'s ``_DETECTION_ONLY_SUGGESTION_TYPES``,
+# ``semantic_domain_violation`` has no repairer at all, and ``entity_consensus`` carries untrusted
+# provenance. So nothing was written that should not have been -- which is exactly the problem.
+# `PRODUCT.md` calls that "a guarantee holding by accident", and the whole argument for C4 was that
+# an incidental refusal must be made principled and named. A threshold of 0.90 on a class nobody
+# intends to auto-apply is a refusal waiting to stop being one.
+#
+# The population is now asserted TOTAL against ``ALL_ISSUE_TYPES`` at import, in the shape
+# ``detectors/base.py:137`` already uses for ``CONSTRAINT_CHECKABLE_DETECTORS``. A new issue type
+# fails at import rather than silently acquiring a 0.90 auto-apply threshold.
 _DEFAULT_THRESHOLDS: dict[str, float] = {
     "decimal_shift": 0.70,
     "fd_violation": 0.80,
@@ -64,7 +79,65 @@ _DEFAULT_THRESHOLDS: dict[str, float] = {
     "missing_value": 1.01,  # detection-only by default: never auto-apply
     "outlier": 1.01,  # detection-only: flag, do not auto-fix
     "duplicate_row": 1.01,  # detection-only: row deletes are constitution-blocked
+    "date_transposition": 1.01,  # detection-only: engine holds it, whether a cell needs the
+    # transform is not provable in-table
+    "time_format_cruft": 1.01,  # detection-only, same hold as date_transposition
+    "semantic_domain_violation": 1.01,  # no repairer exists, so it can never propose a value
+    "entity_consensus": 1.01,  # untrusted provenance; never auto-applied without an opt-in
 }
+
+#: Why each ``1.01`` class is disabled. Paired with the sentinel rather than inferred from it,
+#: because "never auto-apply by design" and "never auto-apply until the data supports it" are
+#: different claims and the number cannot tell them apart.
+#:
+#: ``AbstentionPolicy.uncertified_classes``'s docstring says the sentinel is made
+#: "self-documenting" by this mapping -- and until 2026-09-14 ``default_policy()`` populated
+#: ``auto_apply_thresholds`` and left ``uncertified_classes`` empty, so on the default path the
+#: reasons had no producer. That is `PRODUCT.md` 1.3's rule again: a field whose stated purpose is
+#: served by nothing.
+_UNCERTIFIED_REASONS: dict[str, str] = {
+    "missing_value": "detection_only_by_design",
+    "outlier": "detection_only_by_design",
+    "duplicate_row": "row_delete_constitution_blocked",
+    "date_transposition": "need_not_provable_in_table",
+    "time_format_cruft": "need_not_provable_in_table",
+    "semantic_domain_violation": "no_repairer_exists",
+    "entity_consensus": "untrusted_provenance",
+}
+
+
+def _assert_threshold_population_is_total() -> None:
+    """Refuse an issue type with no declared threshold, and a sentinel with no reason.
+
+    Import-time rather than test-time, following ``detectors/base.py:137``: a missing threshold is
+    a silent 0.90 auto-apply permission, and that must not be reachable in a process that merely
+    forgot to run the tests.
+    """
+    from dataforge.detectors.base import ALL_ISSUE_TYPES
+
+    missing = ALL_ISSUE_TYPES - set(_DEFAULT_THRESHOLDS)
+    if missing:  # pragma: no cover - import guard
+        raise RuntimeError(
+            f"issue type(s) {sorted(missing)} have no entry in _DEFAULT_THRESHOLDS, so they "
+            "inherit default_threshold=0.90 and would auto-apply at 0.90 confidence. Declare a "
+            "threshold, and 1.01 if the class must never auto-apply."
+        )
+    unknown = set(_DEFAULT_THRESHOLDS) - ALL_ISSUE_TYPES
+    if unknown:  # pragma: no cover - import guard
+        raise RuntimeError(
+            f"_DEFAULT_THRESHOLDS names {sorted(unknown)}, which are not issue types. A stale "
+            "entry reads as coverage of something that does not exist."
+        )
+    sentinels = {key for key, value in _DEFAULT_THRESHOLDS.items() if value >= 1.01}
+    if sentinels != set(_UNCERTIFIED_REASONS):  # pragma: no cover - import guard
+        raise RuntimeError(
+            "every never-auto-apply threshold must state why: "
+            f"sentinels without a reason {sorted(sentinels - set(_UNCERTIFIED_REASONS))}, "
+            f"reasons without a sentinel {sorted(set(_UNCERTIFIED_REASONS) - sentinels)}"
+        )
+
+
+_assert_threshold_population_is_total()
 
 
 class AbstentionPolicy(BaseModel):
@@ -120,11 +193,17 @@ class AbstentionPolicy(BaseModel):
 
 
 def default_policy() -> AbstentionPolicy:
-    """Return the conservative default abstention policy."""
+    """Return the conservative default abstention policy.
+
+    ``uncertified_classes`` is populated from :data:`_UNCERTIFIED_REASONS`. Until 2026-09-14 it
+    was left empty here, so the field the model's own docstring describes as making the ``1.01``
+    sentinel self-documenting carried nothing on the path every default run takes.
+    """
     return AbstentionPolicy(
         target_precision=0.95,
         auto_apply_thresholds=dict(_DEFAULT_THRESHOLDS),
         default_threshold=0.90,
+        uncertified_classes=dict(_UNCERTIFIED_REASONS),
     )
 
 

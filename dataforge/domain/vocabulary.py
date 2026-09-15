@@ -173,6 +173,85 @@ def type_discriminates(declared_type: str | None) -> bool:
     return declared_type.strip().lower() not in NON_DISCRIMINATING_COLUMN_TYPES
 
 
+# --- Which schema constraint kinds a verifier can actually reject on ----------
+# `type_discriminates` above asks "can this declared TYPE reject a value?" and was added
+# 2026-08-25 after a premise declaring every column `str` was measured admitting 10 of 14
+# constraint-violating writes, every one stamped `proven`.
+#
+# The same question was never asked of the other constraint kinds, and the answer differs.
+# `eval/preregistration/entailment_strength.md` lines 29-36 SPECIFIED the discriminating set
+# as six conditions. `authoritative_columns` implemented ten. The three extra kinds are named
+# in `UNENFORCEABLE_CONSTRAINT_KINDS` below, and the divergence was measured, not reasoned
+# about: adding a relationship on every column to the permissive premise -- one field, nothing
+# else changed -- took it from 0 written to **11 written, 10 of 14 corrupted**, exactly
+# reproducing the pre-2026-08-25 `str` figure, and one applied injection changed the table
+# from 6 rows to 7. The 2026-08-25 rule closed the `str` door and left an identical one open.
+# Measured in `eval/results/trust_ledger_adversarial.json` and
+# `docs/trust/authority-enforcement-correspondence.md`.
+#
+# **This is an allowlist, and the direction is deliberate**, unlike
+# `NON_DISCRIMINATING_COLUMN_TYPES` above, which is a denylist that fails open. Here a
+# `Schema` field nobody has classified confers NO authority, so a new constraint kind is
+# unauthoritative until a verifier can reject on it. The partition is asserted TOTAL against
+# `Schema`'s own fields by `tests/unit/test_authority_enforcement_correspondence.py`, so a new
+# field fails a test rather than silently joining either side.
+ENFORCEABLE_CONSTRAINT_KINDS: Final[frozenset[str]] = frozenset(
+    {
+        # Conditional on `type_discriminates`; the verifiers do check a declared type.
+        "columns",
+        "not_null_columns",
+        "primary_key_columns",
+        "unique_columns",
+        "accepted_values",
+        "regex_constraints",
+        "domain_bounds",
+        "functional_dependencies",
+    }
+)
+
+#: Constraint kinds that may be DECLARED but confer no write authority, each with the reason.
+#: Declaring one still drives detection and still travels in the constraint IR; it simply
+#: cannot make an untrusted value `proven`, because nothing can reject on it.
+UNENFORCEABLE_CONSTRAINT_KINDS: Final[dict[str, str]] = {
+    "relationships": (
+        "Referential integrity requires the REFERENCED relation, and no verifier loads it: "
+        "neither SMTVerifier nor DirectVerifier contains a relationship branch. This is the "
+        "kind that matters in practice rather than adversarially -- dataforge/integrations/"
+        "dbt.py maps dbt's built-in `relationships` test onto it, so a user importing a dbt "
+        "manifest reaches it without doing anything unusual. Enforcing it is a capability "
+        "with its own design question (verifier/constraint_ir.py already compiles it to a SQL "
+        "proof query, so the warehouse path may be the route); withdrawing authority is the "
+        "half that needs no new evidence, because it is strictly more refusing."
+    ),
+    "aggregate_dependencies": (
+        "A cross-row aggregate cannot be checked by either verifier, both of which reason "
+        "about one candidate value against the rows it can see. safety/constitution.py::"
+        "_aggregate_sensitive ESCALATES a write to an aggregate source, and that is retained "
+        "-- but an escalation is cleared by `confirm_escalations`, which is the same flag an "
+        "untrusted write already needs, so it is not a compensating control. Escalation and "
+        "proof are different guarantees; this entry exists because they had been conflated."
+    ),
+    "pii_columns": (
+        "A policy marker, not a value predicate: it says a column is sensitive, never what "
+        "its values may be. The PII rule does refuse these writes today, so the mislabelling "
+        "was measured UNREACHABLE rather than exploitable -- which is a fact about another "
+        "guard, not a property of this rule. PRODUCT.md's doctrine is that a guarantee "
+        "holding by accident is not a guarantee."
+    ),
+}
+
+
+def constraint_kind_confers_authority(kind: str) -> bool:
+    """Return whether declaring a constraint of this kind may make a fix ``proven``.
+
+    Fails closed: an unrecognised kind confers nothing. That is the opposite direction from
+    :func:`type_discriminates`, and deliberately so -- there the enumeration is over
+    non-constraints so an unknown name is likely a real type, whereas here an unknown name is
+    a constraint kind nobody has yet shown a verifier can reject on.
+    """
+    return kind in ENFORCEABLE_CONSTRAINT_KINDS
+
+
 # --- Which deterministic repairs may bypass the calibration gate --------------
 # A deterministic fix historically auto-applied unconditionally: `partition_auto_apply`
 # read `if deterministic or policy.action_for(...)`, so `enabled_classes == []` gave no

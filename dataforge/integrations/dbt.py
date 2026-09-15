@@ -4,6 +4,26 @@ The external ``dataforge_07_dbt`` distribution can call these helpers without
 duplicating dbt manifest parsing rules.  Only dbt generic tests that DataForge
 can represent as local constraints are mapped; everything else is ignored
 conservatively.
+
+**Being represented is not the same as being enforced, and this docstring used to
+conflate them.** Of the four tests mapped below, three (``not_null``, ``unique``,
+``accepted_values``) are checked by both verifiers. The fourth, ``relationships``, is
+dbt's built-in referential-integrity test -- and **no verifier can check it**, because
+referential integrity requires the referenced relation and neither ``SMTVerifier`` nor
+``DirectVerifier`` loads one.
+
+Until 2026-09-14 that made this module the most realistic path into a soundness defect:
+``authoritative_columns`` granted write authority to any column named in a constraint, so
+importing a dbt manifest conferred ``proven`` on relationship columns that nothing checked.
+``_model_columns`` only populates ``columns`` when the manifest node carries ``data_type``,
+which is frequently absent, so such a column could arrive with no other constraint at all.
+Measured consequence on the adversarial corpus: 11 writes and 10 of 14 corruptions from
+adding one relationship field. See
+``docs/trust/authority-enforcement-correspondence.md``.
+
+The mapping is retained rather than dropped, because a declared relationship is genuine
+information and drives detection and the constraint IR. What it no longer does is confer the
+right to write: see ``dataforge.domain.vocabulary.UNENFORCEABLE_CONSTRAINT_KINDS``.
 """
 
 from __future__ import annotations
@@ -41,11 +61,13 @@ def schema_from_dbt_manifest(
 ) -> Schema:
     """Map supported dbt generic tests from a manifest into DataForge constraints.
 
-    Supported dbt tests:
-    - ``not_null`` -> ``Schema.not_null_columns``
-    - ``unique`` -> ``Schema.unique_columns``
-    - ``accepted_values`` -> ``Schema.accepted_values``
-    - ``relationships`` -> ``Schema.relationships``
+    Supported dbt tests, and whether a verifier can reject on the result:
+
+    - ``not_null`` -> ``Schema.not_null_columns``   -- enforced
+    - ``unique`` -> ``Schema.unique_columns``       -- enforced
+    - ``accepted_values`` -> ``Schema.accepted_values`` -- enforced
+    - ``relationships`` -> ``Schema.relationships`` -- **mapped but NOT enforceable**, and
+      therefore conferring no write authority. See the module docstring.
     """
     target_model = _resolve_target_model(manifest, model_name, model_unique_id)
     nodes = _mapping(manifest.get("nodes"))

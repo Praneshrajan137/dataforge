@@ -37,8 +37,10 @@ from pathlib import Path
 
 from dataforge.detectors.base import (
     AcceptedValues,
+    AggregateDependency,
     DomainBound,
     RegexConstraint,
+    RelationshipConstraint,
     Schema,
 )
 from dataforge.engine.repair import ExternalFix
@@ -52,6 +54,8 @@ __all__ = [
     "GROUND_TRUTH",
     "PERMISSIVE_SCHEMA",
     "TIGHT_SCHEMA",
+    "UNENFORCEABLE_AGGREGATE_SCHEMA",
+    "UNENFORCEABLE_RELATIONSHIP_SCHEMA",
     "Attack",
     "CorpusOutcome",
     "build_corpus",
@@ -102,6 +106,57 @@ TIGHT_SCHEMA = Schema(
 # schema inference produces from dirty data, and what a hurried operator accepts.
 PERMISSIVE_SCHEMA = Schema(
     columns={"id": "str", "city": "str", "state": "str", "zip": "str", "score": "str"},
+)
+
+# --- The premises that cover every column via a constraint NOTHING CAN CHECK -------
+#
+# Each is ``PERMISSIVE_SCHEMA`` plus exactly ONE added field, so any difference in outcome
+# is attributable to that field and to nothing else. That is the whole design: the corpus
+# already isolates "how much of the guarantee comes from the premise", and these isolate
+# "how much comes from the premise being CHECKABLE".
+#
+# Why they exist. The 2026-08-25 rule (``dataforge.domain.vocabulary.type_discriminates``)
+# established that a declared type must be able to reject a value before it confers proof,
+# and took the permissive premise from 10 of 14 constraint-violating writes to 0. But
+# ``authoritative_columns`` grants authority for ten constraint kinds and the verifiers
+# enforce six, so the rule closed the ``str`` door and left an equivalent one open: a
+# relationship or an aggregate dependency names a column, confers authority over it, and
+# neither ``SMTVerifier`` nor ``DirectVerifier`` contains any branch that can reject on it.
+#
+# ``relationships`` is the one that matters in practice rather than adversarially:
+# ``dataforge/integrations/dbt.py`` maps dbt's built-in ``relationships`` test onto this
+# field, so a user importing a dbt manifest arrives here without doing anything unusual.
+#
+# See ``eval/preregistration/authority_enforcement_correspondence.md``.
+#
+# ``build_corpus()`` is deliberately NOT extended to reach this. Its 14 discriminable
+# attacks are the denominator of the published "10 of 14", and moving a denominator to
+# accommodate a new finding would restate history rather than add to it.
+
+_REFERENCE_RELATION = "ref_dimension"
+
+UNENFORCEABLE_RELATIONSHIP_SCHEMA = Schema(
+    columns={"id": "str", "city": "str", "state": "str", "zip": "str", "score": "str"},
+    relationships=tuple(
+        RelationshipConstraint(
+            column=column,
+            reference=_REFERENCE_RELATION,
+            reference_column="name",
+        )
+        for column in COLUMNS
+    ),
+)
+
+UNENFORCEABLE_AGGREGATE_SCHEMA = Schema(
+    columns={"id": "str", "city": "str", "state": "str", "zip": "str", "score": "str"},
+    aggregate_dependencies=tuple(
+        AggregateDependency(
+            source_column=column,
+            aggregate="sum",
+            target_column=f"{column}_total",
+        )
+        for column in COLUMNS
+    ),
 )
 
 

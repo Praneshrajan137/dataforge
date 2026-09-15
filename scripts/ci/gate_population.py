@@ -57,32 +57,139 @@ BACKEND_GATE = PROJECT_ROOT / "scripts" / "ci" / "backend_gate.py"
 #: would have been the mistake, and would have hidden a real deletion the next time.
 STEP_CALLEES: Final[tuple[str, ...]] = ("_run", "GateCommand")
 
+#: The name of the list every result-contributing check flows into, inside ``main()``.
+CHECKS_VARIABLE: Final = "checks"
 
-def _step_names(source: Path) -> list[str]:
-    """Return every gate step label declared in ``source``.
 
-    Reads the declaration instead of the execution. A step whose name is built dynamically would
-    be invisible here, so a non-literal first argument raises rather than being silently omitted.
+def _declared_step_names(tree: ast.Module) -> dict[str, str]:
+    """Map function name -> declared step name for every ``@gate_step(...)`` decorated check.
+
+    Added 2026-09-14. Seven checks are appended to ``checks`` as bare calls rather than through
+    ``_run``/``GateCommand``, so :data:`STEP_CALLEES` could not see them: the npm audit, the whole
+    pip-audit exception family, the coverage policy check, the corrector promotion gate and the
+    secret scan. Any could have been deleted with this manifest reporting no change.
     """
-    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
-    names: list[str] = []
+    declared: dict[str, str] = {}
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if not isinstance(node, ast.FunctionDef):
             continue
-        func = node.func
-        if not isinstance(func, ast.Name) or func.id not in STEP_CALLEES:
-            continue
-        if not node.args:
-            continue
-        first = node.args[0]
-        if isinstance(first, ast.Constant) and isinstance(first.value, str):
-            names.append(first.value)
-        else:
+        for decorator in node.decorator_list:
+            if not isinstance(decorator, ast.Call):
+                continue
+            func = decorator.func
+            if not (isinstance(func, ast.Name) and func.id == "gate_step"):
+                continue
+            if not decorator.args:
+                continue
+            first = decorator.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                declared[node.name] = first.value
+    return declared
+
+
+def _resolve_check_expression(
+    expression: ast.expr, declared: dict[str, str], source: Path
+) -> list[str]:
+    """Return the step name(s) an expression appended to ``checks`` contributes.
+
+    RAISES on anything it cannot name. That refusal is the whole point: the previous
+    implementation collected the shapes it recognised and silently ignored the rest, which is an
+    allowlist wearing the costume of an enumeration. A step this cannot name is a step that could
+    vanish unnoticed, so it must stop the gate rather than shrink the manifest.
+    """
+    if isinstance(expression, ast.Call):
+        func = expression.func
+        name = func.id if isinstance(func, ast.Name) else None
+        if name in STEP_CALLEES and expression.args:
+            first = expression.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                return [first.value]
             raise ValueError(
-                f"{source.name}:{node.lineno}: {func.id}() called with a non-literal step "
+                f"{source.name}:{expression.lineno}: {name}() called with a non-literal step "
                 "name. The population manifest derives step names statically, so a computed "
                 "name would be omitted from the manifest while still running in the gate."
             )
+        if name in declared:
+            return [declared[name]]
+        if name == "_run_group":
+            # The group label is not a step; its nested GateCommand names are.
+            nested: list[str] = []
+            for argument in expression.args[1:]:
+                if isinstance(argument, ast.List):
+                    for element in argument.elts:
+                        nested.extend(_resolve_check_expression(element, declared, source))
+            if nested:
+                return nested
+    raise ValueError(
+        f"{source.name}:{getattr(expression, 'lineno', '?')}: an expression appended to "
+        f"'{CHECKS_VARIABLE}' could not be resolved to a gate step name. Every contributor to "
+        "the gate's result must be nameable, or it can be deleted without this manifest "
+        "noticing. Route it through _run/GateCommand, or decorate its function with "
+        "@gate_step('<name>')."
+    )
+
+
+def _step_names(source: Path) -> list[str]:
+    """Return every gate step label that contributes a result, derived from ``main()``.
+
+    Reads the declaration instead of the execution, because importing ``backend_gate`` to ask it
+    would run nothing and enumerating at runtime would require running the gate.
+
+    **Rewritten 2026-09-14.** This used to AST-scan the whole module for ``_run``/``GateCommand``
+    literals, which was a syntactic approximation of the population rather than the population:
+    seven of 47 result-contributing steps were invisible because they are appended to ``checks``
+    as bare function calls. The manifest recorded 40 while the gate ran 47, and the document that
+    disclosed the hole under-counted it as six of 39.
+
+    It now enumerates ``checks`` itself -- the initialising list, every ``.append`` and every
+    ``.extend`` inside ``main()`` -- and RAISES on an element it cannot name. That is the
+    difference between the shapes we thought to look for and the thing that actually happens.
+    """
+    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    declared = _declared_step_names(tree)
+    main = next(
+        (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "main"
+        ),
+        None,
+    )
+    if main is None:  # pragma: no cover - structural guard
+        raise ValueError(f"{source.name}: no main() found, so the gate population is unknowable.")
+
+    names: list[str] = []
+    for node in ast.walk(main):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if (
+                    isinstance(target, ast.Name)
+                    and target.id == CHECKS_VARIABLE
+                    and isinstance(node.value, ast.List)
+                ):
+                    for element in node.value.elts:
+                        names.extend(_resolve_check_expression(element, declared, source))
+        if isinstance(node, ast.AnnAssign):
+            target = node.target
+            if (
+                isinstance(target, ast.Name)
+                and target.id == CHECKS_VARIABLE
+                and isinstance(node.value, ast.List)
+            ):
+                for element in node.value.elts:
+                    names.extend(_resolve_check_expression(element, declared, source))
+        if isinstance(node, ast.Call):
+            func = node.func
+            if not isinstance(func, ast.Attribute) or func.attr not in {"append", "extend"}:
+                continue
+            owner = func.value
+            if not (isinstance(owner, ast.Name) and owner.id == CHECKS_VARIABLE):
+                continue
+            for argument in node.args:
+                names.extend(_resolve_check_expression(argument, declared, source))
+
+    if not names:  # pragma: no cover - structural guard
+        raise ValueError(f"{source.name}: main() contributes no nameable gate steps.")
     return sorted(names)
 
 

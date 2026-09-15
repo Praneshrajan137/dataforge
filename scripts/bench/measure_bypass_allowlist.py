@@ -114,6 +114,42 @@ MEASURABLE_DETECTORS: Final[tuple[str, ...]] = (
     "type_mismatch",
 )
 
+#: Repairers ``build_repairers`` can register that this harness does NOT measure, each with the
+#: reason. Added 2026-09-14 to make the scope TOTAL.
+#:
+#: Why it was needed: ``MEASURABLE_DETECTORS`` named 5 of the 8 keys ``build_repairers`` can
+#: register, and the guard for it -- ``test_the_measurable_set_is_a_strict_superset_of_the_
+#: allowlist`` -- asserted only a LOWER bound (``CONSTRAINT_CHECKABLE_DETECTORS < measurable``).
+#: A lower bound cannot see a missing member, so the three absences below were invisible to the
+#: gate that exists to police this harness's scope. ``CLAUDE.md`` names this harness as what
+#: REPLACES the retired 0.7926 headline with per-detector unconditional write measurement, so a
+#: silent hole in its population is a hole in the evidence that replaced a headline.
+#:
+#: Two of the three are genuine scope decisions. The third is an open gap and is recorded as one
+#: rather than dressed as a decision.
+UNMEASURED_DETECTORS: Final[dict[str, str]] = {
+    "outlier": (
+        "Registered only under allow_llm, where `registry['outlier']` IS the LLM corrector object. "
+        "Measuring it would measure the corrector, which `dataforge/release/corrector_gate.py` "
+        "governs on its own evidence and its own promotion criteria. Not a bypass-allowlist "
+        "question."
+    ),
+    "entity_consensus": (
+        "Off by default and classified plausibility_only by the engine, so it is held by "
+        "PROVENANCE rather than by the calibration bypass this harness measures. Admitting it here "
+        "would report a bypass figure for a repairer that never reaches the bypass."
+    ),
+    "decimal_shift": (
+        "OPEN GAP, not a scope decision. It is in the deterministic registry and it is the "
+        "detector this project REMOVED from the bypass after measuring precision 0.0000 on three "
+        "corpora and 263,428 false rewrites on a fourth -- the exact motivation for "
+        "docs/trust/bypass-allowlist-evidence.md, which this harness feeds. It is measurable in "
+        "principle and has never been measured here. Recorded so the absence is findable; closing "
+        "it needs its own pre-registration, because a fourth-corpus rerun is what removed it and "
+        "re-measuring it must not read as re-admitting it."
+    ),
+}
+
 #: Detectors whose repairer reads no premise, so a premised arm would be identical by construction.
 #: Reporting two arms for these would imply a premise sensitivity that does not exist:
 #: ``format_violation`` accepts a ``schema`` and never reads it, and

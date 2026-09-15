@@ -22,7 +22,7 @@ import json
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -33,6 +33,8 @@ from dataforge.metrics import TrustLedger  # noqa: E402
 from tests.adversarial.corpus import (  # noqa: E402
     PERMISSIVE_SCHEMA,
     TIGHT_SCHEMA,
+    UNENFORCEABLE_AGGREGATE_SCHEMA,
+    UNENFORCEABLE_RELATIONSHIP_SCHEMA,
     build_corpus,
     truth,
     write_table,
@@ -141,6 +143,44 @@ def measure(schema: Schema, label: str, *, only: str = "all") -> tuple[TrustLedg
     return ledger, detail
 
 
+#: Arms that existed before the unenforceable-premise measurement was added. K1 in
+#: ``eval/preregistration/authority_enforcement_correspondence.md`` binds the new arms to these:
+#: if extending the harness moved an existing arm, the harness is what changed and no new number
+#: may be reported until that is explained.
+_PRE_EXISTING_ARMS: Final = ("tight", "permissive")
+
+
+def _instrument_falsification_errors(results: dict[str, dict[str, Any]]) -> list[str]:
+    """Return the ways this run disagrees with the committed artifact on the OLD arms.
+
+    Bound to the artifact, never to a constant written in prose. A documented constant is
+    exactly what rotted undetected for 54 days on the hospital anchor, which is why
+    ``scripts/ci/anchor_truth.py`` exists; the same reasoning applies here.
+
+    A missing artifact is not a pass. It returns a single error, because "there was nothing
+    to check against" and "it checked out" must not read the same.
+    """
+    if not ARTIFACT.exists():
+        return [f"{ARTIFACT.name} is absent, so the existing arms could not be reproduced."]
+
+    committed = json.loads(ARTIFACT.read_text(encoding="utf-8")).get("premises", {})
+    errors: list[str] = []
+    for premise in _PRE_EXISTING_ARMS:
+        if premise not in committed:
+            errors.append(f"committed artifact has no {premise!r} premise to reproduce.")
+            continue
+        for subset, committed_record in committed[premise].items():
+            fresh = results.get(premise, {}).get(subset)
+            if fresh is None:
+                errors.append(f"{premise}/{subset} was not measured in this run.")
+                continue
+            for key, was in sorted(committed_record.items()):
+                now = fresh.get(key)
+                if now != was:
+                    errors.append(f"{premise}/{subset}.{key}: committed {was!r}, measured {now!r}")
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true", help="commit the artifact")
@@ -149,6 +189,18 @@ def main() -> int:
     premises = {
         "tight": (TIGHT_SCHEMA, "tight (typed, bounded, patterned, enumerated)"),
         "permissive": (PERMISSIVE_SCHEMA, "permissive (every column declared str)"),
+        # Each is `permissive` plus exactly one added field, so the delta against
+        # `permissive` is attributable to that field alone. Both name every column in a
+        # constraint kind `authoritative_columns` counts as authority and neither verifier
+        # can reject on. See eval/preregistration/authority_enforcement_correspondence.md.
+        "unenforceable_relationship": (
+            UNENFORCEABLE_RELATIONSHIP_SCHEMA,
+            "unenforceable (permissive + a relationship on every column)",
+        ),
+        "unenforceable_aggregate": (
+            UNENFORCEABLE_AGGREGATE_SCHEMA,
+            "unenforceable (permissive + an aggregate dependency on every column)",
+        ),
     }
     subsets = ("discriminable", "undecidable", "all")
 
@@ -186,9 +238,40 @@ def main() -> int:
         "now decides whether anything may be written at all, rather than whether corruption occurs."
     )
 
+    # Generated, not written, for the same reason as the headline above: a sentence about a
+    # correspondence defect must not be able to drift from the numbers that establish it. Phrased
+    # in the past tense on purpose -- the defect is CLOSED, and a present-tense description of a
+    # fixed defect is exactly the kind of stale claim this repository keeps finding.
+    _relationship = results["unenforceable_relationship"]["discriminable"]
+    _aggregate = results["unenforceable_aggregate"]["discriminable"]
+    _permissive = results["permissive"]["discriminable"]
+    _tight = results["tight"]["discriminable"]
+    correspondence = (
+        "Until 2026-09-14 authoritative_columns granted write authority for ten Schema "
+        "constraint kinds while the SMT and Direct verifiers enforced six, so declaring a "
+        "relationship or an aggregate dependency made an untrusted value `proven` with nothing "
+        "able to reject it. Each premise here is the permissive premise plus exactly one added "
+        "field, so the delta is attributable to that field alone. Measured before the fix, "
+        "adding a relationship on every column took the premise from 0 writes to 11, corrupting "
+        f"10 of {_permissive['attacks']}, and one applied injection took the table from 6 rows "
+        "to 7; the aggregate premise was identical at 11 and 10. That reproduced the "
+        "pre-2026-08-25 `str` figure exactly, so requiring a declared TYPE to discriminate had "
+        "closed one door and left an equivalent one open. Both verifiers ACCEPTED in every "
+        "case, so they agreed -- N-version diversity cannot catch a constraint kind absent from "
+        "the specification both implementations share, and require_independent_agreement reads "
+        "agreement as verification. After the fix the unenforceable premises write "
+        f"{_relationship['cells_applied']} and {_aggregate['cells_applied']} cells and corrupt "
+        f"{_relationship['corruptions']} and {_aggregate['corruptions']}, collapsing onto the "
+        f"permissive premise's {_permissive['cells_applied']}, while the tight premise keeps its "
+        f"{_tight['cells_applied']} legitimate repair at {_tight['corruptions']} corruptions. "
+        "The authority/enforcement partition is now asserted total against Schema's own fields "
+        "by tests/unit/test_authority_enforcement_correspondence.py."
+    )
+
     payload = {
         "measurement": "trust_ledger_adversarial",
         "headline": headline,
+        "correspondence": correspondence,
         "note": (
             "Trust Ledger over the adversarial corpus, under two schema premises and split "
             "by subset. 'discriminable' attacks violate a declared constraint and are the "
@@ -207,6 +290,21 @@ def main() -> int:
     }
 
     print(f"\nHEADLINE: {headline}")
+
+    # K1: the new arms are reported only if the old ones reproduce. Checked before --write and
+    # before the correspondence headline is trusted, so a harness that has drifted cannot
+    # publish a finding about someone else's drift.
+    falsifications = _instrument_falsification_errors(results)
+    if falsifications:
+        print("\nINSTRUMENT FALSIFIED (K1). Reporting nothing; fix the harness first:")
+        for error in falsifications:
+            print(f"  - {error}")
+        return 1
+    print(
+        "\nK1 satisfied: the pre-existing "
+        f"{'/'.join(_PRE_EXISTING_ARMS)} arms reproduce the committed artifact field-for-field."
+    )
+    print(f"\nCORRESPONDENCE: {correspondence}")
 
     if args.write:
         ARTIFACT.parent.mkdir(parents=True, exist_ok=True)

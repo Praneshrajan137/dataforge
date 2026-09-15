@@ -651,6 +651,31 @@ remaining four print-style steps are still outside `gate_population`'s populatio
 recorded here as an open limit rather than fixed, since generalising it means changing
 `gate_population.py` itself.
 
+### CLOSED 2026-09-14, and this section had under-counted its own hole
+
+The limit above is fixed. Two corrections to what it says, both in the direction of understating
+the problem — which is the direction that matters, because a disclosure that under-reports is a
+disclosure someone will act on and still be wrong:
+
+- It names **six** invisible checks and says the manifest holds **39** entries. The true figures
+  were **seven** and **40**. `_npm_audit_check` is missing from the list above.
+- It says "the remaining four print-style steps", implying the two added in that work were
+  visible. They were not. All seven were outside the population.
+
+`gate_population.py::_step_names` no longer AST-scans the module for `_run`/`GateCommand`
+literals. It enumerates **`checks` itself** — the initialising list, every `.append` and every
+`.extend` inside `main()` — and resolves each contributor to a name, via `_run`/`GateCommand`
+literals, via nested `GateCommand`s inside `_run_group`, or via a new `@gate_step("<name>")`
+decorator on the seven print-style functions. **An element it cannot name raises**, so a future
+check appended in a shape nobody anticipated stops the gate instead of shrinking the manifest.
+That is the difference between the shapes we thought to look for and the thing that happens.
+Population: **40 → 48** (seven newly visible, plus one step split out of a malformed command).
+
+And the reason this mattered more than the count suggests: the gate that pins this population
+**was not running at all**. Its only invocation passed `gate_population.py --check` as ignored
+argv to `hf_space_frontmatter.py`. See
+[gate-population-was-not-running.md](gate-population-was-not-running.md).
+
 ## 2026-08-30, later: `main` had been red for four commits, and the local gates could not see it
 
 Pushing the work above triggered CI and revealed that `main` had been failing since `f508cf2`

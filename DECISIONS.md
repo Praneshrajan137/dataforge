@@ -42,6 +42,104 @@ benchmark still exist.
 
 ---
 
+## 2026-09-14 - Authority must correspond to enforcement: a declaration nothing can check confers no proof
+
+**Context**: `authoritative_columns` granted write authority for **ten** `Schema` constraint kinds
+while `SMTVerifier` and `DirectVerifier` enforce **six**. A premise whose only statement about a
+column was a `relationships` or `aggregate_dependencies` declaration therefore made an untrusted
+value **`proven`** — the receipt read *"Applied 1 proven external fix(es)"* — with nothing anywhere
+able to reject it. `DirectVerifier` already hedged in its accept string ("all *tracked* verifier
+constraints", `direct.py:262`) while returning ACCEPT.
+
+This was a **specification-implementation divergence**, not an oversight of scope.
+`eval/preregistration/entailment_strength.md` lines 29-36 specified the discriminating set as
+exactly six conditions; the three extra kinds appear nowhere in it. The 2026-08-25 change asked
+"can this declaration reject a value?" of **types** and fixed that case at 10-of-14 → 0-of-14. The
+question was never asked of the other kinds.
+
+Two things made it worse than a mislabelled cell. **The realistic path in was dbt**, not an
+adversary: `integrations/dbt.py` maps dbt's built-in `relationships` test onto the field, and
+`_model_columns` only populates `columns` when the manifest carries `data_type`, so a relationship
+column could arrive with no other constraint at all. And **N-version diversity structurally could
+not catch it** — both verifiers are derived by hand from the same `Schema` and omit the same kinds,
+so both returned ACCEPT, they agreed, and `require_independent_agreement` read agreement as
+verification. That is PRODUCT.md 1.3's "two mutually-consistent wrong artifacts reading as
+verification", one level below the prose-versus-gate case it was written about.
+
+**Alternatives**:
+
+1. **Implement referential and aggregate verification.** Restores the capability a user declaring a
+   foreign key expects. Rejected *for now*: it needs the referenced relation, which no verifier
+   loads, and that is a design question rather than a fix. `constraint_ir.py:125-136` already
+   compiles a relationship to a SQL proof query, so the warehouse path may be the route.
+2. **Withdraw authority from any kind no verifier can reject on.** Strictly more refusing, needs no
+   new constant, and is a direct application of the already-ratified 2026-08-25 rule. Costs a user
+   the authority they thought a relationship declaration gave them — which they never actually had.
+3. **Leave it and document the gap.** Rejected: this is exactly the "disclosure instead of
+   reallocation" pattern that got the training subsystem excised (PRODUCT.md 10), and the thing
+   being disclosed is an unsound `proven`.
+4. **Keep authority but downgrade the strength to `plausibility_only`.** Rejected as a larger,
+   riskier change to the strength taxonomy for no additional safety: a `plausibility_only` fix is
+   already not auto-applied, so withdrawing authority reaches the same outcome through the existing
+   mechanism.
+
+**Decision**: option 2. `relationships`, `aggregate_dependencies` and `pii_columns` confer no write
+authority. The partition lives in `dataforge.domain.vocabulary.ENFORCEABLE_CONSTRAINT_KINDS` /
+`UNENFORCEABLE_CONSTRAINT_KINDS` beside `type_discriminates`, and `authoritative_columns` now
+unions only enforceable kinds from a derived per-kind map instead of a hand-written run of
+`covered |=` statements.
+
+**Reasoning**: measured, not reasoned. Adding **one field** to the adversarial corpus's permissive
+premise — changing nothing else — took it from 0 writes to **11, corrupting 10 of 14**, exactly
+reproducing the pre-2026-08-25 `str` figure. The aggregate arm was identical. After the fix both
+collapse onto the permissive premise at 0 while `tight` keeps its 1 legitimate repair.
+`eval/results/trust_ledger_adversarial.json`,
+[docs/trust/authority-enforcement-correspondence.md](docs/trust/authority-enforcement-correspondence.md).
+
+**Three findings beyond the fix, each recorded because it generalises:**
+
+- **One applied write changed the table's shape**, 6 rows to 7.
+  `test_the_table_shape_is_never_changed` existed and passed throughout because it ran **only under
+  `TIGHT_SCHEMA`** — a structural invariant tested solely under the premise that upholds it. Shape
+  is not premise-dependent; it is now asserted under every premise.
+- **A prediction of mine was refuted.** I predicted `aggregate_dependencies` would behave
+  differently because `_aggregate_sensitive` escalates. It does — and `confirm_escalations` clears
+  it, which is the same flag an untrusted write already needs. I had credited an escalation as a
+  compensating control when it is not one. Escalation and proof are different guarantees.
+- **`pii_columns` was mislabelled but NOT exploitable**: the PII rule refuses the write. It loses
+  authority anyway, because that is a fact about a different guard rather than a property of the
+  authority rule, and a guarantee that holds by accident is not a guarantee. Published though it
+  weakens the headline from three kinds to two.
+
+**Also corrected**: `docs/trust/inferred-guard-gaps.md` claimed a gap is closed when an
+authoritative schema is supplied because "the differential SMT/Direct verifier then enforces the
+real constraint". True for gap 6 (uniqueness — verified enforced in both verifiers). **False for
+gap 7** (referential, aggregate). They sat in the same table in the same words. And
+`integrations/dbt.py` claimed it maps only tests "DataForge can represent as local constraints";
+being represented is not being enforced.
+
+**What was checked and found sound**, recorded because a clean check is evidence: uniqueness and
+primary keys **are** genuinely enforced in both verifiers — the first hypothesis in this
+investigation was that they were not, and reading the code refuted it. And no published number
+moved: `eval/premises/hospital_declared.yaml` declares only `columns` (all `str`, inert) and
+`functional_dependencies`, verified by reading the premise **before** predicting;
+`anchor_truth` re-measures hospital at F1 0.8352 (tp 451, fp 120) from code.
+
+**Reviewed with**: nobody; measured against a pre-registration with kill criteria fixed first
+(`eval/preregistration/authority_enforcement_correspondence.md`). K1 — instrument falsification —
+is now baked into `measure_trust_ledger.py`, which refuses to report a new arm if a pre-existing
+arm has moved against the committed artifact.
+
+**Reversal criteria**: if either verifier learns to reject on a kind listed unenforceable,
+`test_no_verifier_pretends_to_check_an_unenforceable_kind` fails and the kind must be **promoted**
+to `ENFORCEABLE_CONSTRAINT_KINDS` and the corpus re-measured — so this exemption cannot outlive its
+reason. If withdrawing authority is found to cost a real user a legitimate repair on a corpus we
+can measure, that is evidence for option 1 and a reason to implement referential verification,
+never a reason to restore unchecked authority. If `tight` ever stops writing its 1 legitimate
+repair, the rule is too strict: revert it rather than relaxing the assertion.
+
+---
+
 ## 2026-09-13 - Audit closure: the pre-registration discipline verified structurally, and reversal criteria that cannot fire
 
 **Context**: an end-to-end independent audit. Two areas had been assigned repeatedly and never
@@ -4574,3 +4672,99 @@ truth 20 claims, readme truth, release gate exit 0.
 **Reversal criteria**: if a certificate ever legitimately needs a control class with a single
 labelled item, the per-class `controls >= 1` floor and the union correction both need revisiting
 before relaxing any validator here.
+## 2026-09-14 - The gate that freezes every other gate was not running
+
+`scripts/ci/gate_population.py` is the meta-gate: it is what makes a deleted test, a vanished
+claim, a removed mutant or a dropped gate step detectable at all. It ran in **zero** CI workflows.
+Its only invocation was `[PYTHON, "scripts/ci/hf_space_frontmatter.py",
+"scripts/ci/gate_population.py", "--check"]` -- one interpreter call, in which the meta-gate and
+its flag were argv entries that `hf_space_frontmatter.py` never reads. The step reported PASS under
+the name "gate population" while a different check ran, and the front-matter check was
+simultaneously being credited to the wrong name.
+
+The blast radius is in the repository's own words. Both `.github/workflows/ci.yml` and the
+`Makefile` cite `gate_population.py` as the mechanism freezing a harness against removal -- inside
+the comment explaining that unexecuted protection is worthless. The 2026-09-01 work correctly saw
+that a harness nothing runs is decorative, added `mutation-gate` to fix it, and never asked whether
+the gate it was leaning on was itself running. Every "frozen against removal by gate_population"
+claim in this repository was false. Run by hand, `--check` reported **136 un-emitted node
+additions**: not wrong additions, but a manifest 136 entries stale is a manifest nobody consulted.
+
+A second hole in the same gate: `_step_names` AST-scanned for calls to `_run` or `GateCommand`, and
+seven result-contributing checks are appended as bare function calls -- `_secret_scan`,
+`_npm_audit_check`, `_coverage_policy_check`, `_corrector_promotion_gate` and the three pip-audit
+checks. The manifest recorded 40 steps while the gate ran 47. Any of those seven could have been
+deleted with the population check reporting no change, including the entire pip-audit exception
+family that `dependency-advisory-triage.md` was written about.
+
+Fixed: the command is split into two correctly-named steps; a `gate-population` CI job exists with
+no `needs:`; and `_step_names` now enumerates `checks` itself -- the initialiser, every `.append`
+and every `.extend` -- resolving each contributor through `GateCommand` literals, nested
+`_run_group` commands, or a new `@gate_step` decorator, and **raising on any element it cannot
+name**. That refusal is the substance of the change: the previous implementation collected the
+shapes it recognised and ignored the rest, which is an allowlist wearing the costume of an
+enumeration. 48 steps now, one more than 47 because the malformed command became two.
+
+Two divergences the meta-gate should have surfaced, closed with it. `_DEFAULT_THRESHOLDS` covered 8
+of 12 issue types, so `date_transposition`, `entity_consensus`, `semantic_domain_violation` and
+`time_format_cruft` inherited `default_threshold=0.90` instead of the `1.01` never-auto-apply
+sentinel; each is refused today by a *different* mechanism, so nothing wrong was written -- which
+is precisely the "guarantee holding by accident" C4 exists to eliminate. Now total against
+`ALL_ISSUE_TYPES` at import, and `default_policy()` finally populates the `uncertified_classes`
+field whose own docstring claims it makes the sentinel self-documenting. `MEASURABLE_DETECTORS`
+covered 5 of 8 registrable repairers behind a *lower-bound* assertion that structurally could not
+see a missing member; two absences are genuine scope decisions and are now named, and the third is
+recorded as an **open gap**: `decimal_shift` has never been measured by the harness that replaced
+the 0.7926 headline, and it is the detector removed after 263,428 false rewrites.
+
+This is the sixth gate found unable to fail and the third hand-maintained population in three weeks
+found narrower than what it appeared to police. `PRODUCT.md` 1.3 states the rule -- *"Derive the
+population a gate polices; never restate it"* -- and stated it as a maxim with no mechanical
+enforcement, while the gate that would have exposed its violations was the one not running.
+
+Prior art, cited rather than reinvented: DO-178C, ISO 26262 and IEC 62304 achieve traceability
+completeness by **enumerating the artifact, not the links**, giving the unlinked remainder a name
+and an obligation -- *derived requirement*, *dead code*, Table A-7 Objective 9. Three changes here
+now have that shape.
+
+Write-up: `docs/trust/gate-population-was-not-running.md`.
+
+## 2026-09-14 - Only 8.41% of published decimal figures are bound to evidence
+
+`docs_truth.py` verifies 149 claims in both directions and opens no document its claims do not
+name. It is an allowlist, so a number nobody registered is invisible to it -- the direction the
+hospital anchor drifted through for 54 days with every gate green, and one
+`tests/unit/test_release_gate.py` already described in as many words.
+
+`scripts/ci/claim_coverage.py` adds that direction by enumerating the artifact: every decimal figure
+with two or more fractional digits across 53 live documents, each placed in a named category.
+**89 BOUND, 12 GENERATED, 185 RESTATED, 772 UNSOURCED, of 1,058 figures. Bound share 0.0841.**
+38 of 53 documents contain no bound figure at all.
+
+The categories are the finding, not the percentage. `GENERATED` is the *first-best* mechanism and
+not a gap -- a number injected by a generator cannot drift, which is what Quarto and knitr do and
+what `BENCHMARK_REPORT.md` already does. `RESTATED` is the sharpest result: 185 figures bound in one
+document and restated in another that binds nothing, so a copy can drift alone. `README.md` repeats
+`0.1918`, `1.0000` and `0.4599` and is not a registered document at all.
+
+Pre-registered, and **K1 fired on the first run**: the extractor could not find the registered
+`25.42` because `wide-table-review-burden.md` prints it as `**25.42x**` and the lookahead rejected
+the suffix that `docs_truth` itself allows. The criterion suppressed the coverage figure entirely
+rather than reporting a lower one, which is what it was written to do. A second instrument bug was
+caught by disbelieving a round number: the first draft found ZERO generated blocks because it
+looked for `BEGIN GENERATED` while the repository uses `<!-- BENCH:START -->`. A third was caught
+when this write-up's own prose *mentioning* that marker flipped the extractor into generated mode --
+the same category error `measure-on-my-table-result.md` records its egress scan making when it
+scanned its own commentary. Markers are now anchored to whole lines.
+
+The ratchet is on `UNSOURCED` **decreasing**, never on registered-claim count increasing: the
+latter is satisfiable by registering the easiest numbers, which measures compliance instead of
+coverage (Fowler on coverage targets). The baseline self-checks its own total, because a ratchet
+that silently loosens after a bad merge is worse than none -- it looks like protection. An absent
+baseline is an error, not a pass.
+
+Not claimed: that a BOUND number is *correct*, only that it is bound. Not claimed: total recall --
+`statcheck` reports ~60% in a stricter domain, so `extracted_figures` is a lower bound and the
+instrument states so in its own payload. The 772 are grandfathered, not triaged.
+
+Write-up: `docs/trust/claim-coverage-census.md`.

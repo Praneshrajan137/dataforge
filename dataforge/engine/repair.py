@@ -37,6 +37,7 @@ from dataforge.domain.vocabulary import (
     UNTRUSTED_PROVENANCE,
     ReviewReason,
     VerificationStrength,
+    constraint_kind_confers_authority,
     type_discriminates,
 )
 from dataforge.domain.vocabulary import (
@@ -1353,6 +1354,49 @@ def _detection_only_suggestions(issues: list[Issue]) -> list[CandidateRepair]:
     return suggestions
 
 
+def columns_named_by_constraint_kind(schema: Schema) -> dict[str, frozenset[str]]:
+    """Map every ``Schema`` constraint kind to the columns it names.
+
+    Keyed by ``Schema`` field name so the mapping can be checked for TOTALITY against
+    ``dataclasses.fields(Schema)``. That check is the point: the previous implementation was a
+    hand-written run of ``covered |=`` statements, and a hand-written union cannot be compared
+    against anything. A new constraint kind now fails
+    ``tests/unit/test_authority_enforcement_correspondence.py`` rather than either silently
+    joining the authority set or silently staying out of it.
+
+    Naming a column is not the same as constraining it, which is why this function only
+    reports what each kind *names*; :func:`authoritative_columns` decides which of those
+    kinds may confer authority.
+    """
+    named: dict[str, frozenset[str]] = {
+        "columns": frozenset(
+            column for column, declared in schema.columns.items() if type_discriminates(declared)
+        ),
+        "pii_columns": frozenset(schema.pii_columns),
+        "primary_key_columns": frozenset(schema.primary_key_columns),
+        "not_null_columns": frozenset(schema.not_null_columns),
+        "unique_columns": frozenset(schema.unique_columns),
+        "accepted_values": frozenset(rule.column for rule in schema.accepted_values),
+        "regex_constraints": frozenset(rule.column for rule in schema.regex_constraints),
+        "domain_bounds": frozenset(bound.column for bound in schema.domain_bounds),
+        "relationships": frozenset(rule.column for rule in schema.relationships),
+        "aggregate_dependencies": frozenset(
+            column
+            for dependency in schema.aggregate_dependencies
+            for column in (dependency.source_column, dependency.target_column)
+        ),
+        # A value in either position is checked by the FD, so both sides are named. This is a
+        # deliberate widening of `entailment_strength.md`'s specification, which names only the
+        # dependent; it is sound because the determinant is genuinely checked.
+        "functional_dependencies": frozenset(
+            column
+            for fd in schema.functional_dependencies
+            for column in (*fd.determinant, fd.dependent)
+        ),
+    }
+    return named
+
+
 def authoritative_columns(schema: Schema | None) -> frozenset[str]:
     """Return the columns an authoritative schema actually constrains.
 
@@ -1366,9 +1410,8 @@ def authoritative_columns(schema: Schema | None) -> frozenset[str]:
     threshold. That is a truthfulness violation, not merely an unproven write.
 
     Authority is therefore scoped to the columns the schema speaks about. A column counts
-    as covered when the schema declares a **discriminating** type for it or names it in any
-    constraint. A functional dependency covers its determinant AND its dependent, because a value
-    in either position is checked by the FD.
+    as covered when the schema declares a **discriminating** type for it or names it in a
+    constraint **a verifier can reject on**.
 
     **A declared type is not automatically a constraint.** Listing a column as ``str`` says
     nothing that can reject a value, and counting it as authority was the next instance of the
@@ -1377,26 +1420,27 @@ def authoritative_columns(schema: Schema | None) -> frozenset[str]:
     stamped ``proven``, against 0 of 14 under a premise that actually constrained. See
     :func:`~dataforge.domain.vocabulary.type_discriminates` and
     ``eval/preregistration/entailment_strength.md``.
+
+    **And naming a column in an UNCHECKABLE constraint is not a constraint either** -- the
+    third instance of the same defect, closed 2026-09-14. This function granted authority for
+    ten constraint kinds while ``SMTVerifier`` and ``DirectVerifier`` enforce six, so a
+    ``relationships`` or ``aggregate_dependencies`` declaration conferred ``proven`` on a value
+    nothing could reject. Adding one relationship field to the permissive premise -- changing
+    nothing else -- took it from 0 writes to **11 writes, 10 of 14 corrupted**, reproducing the
+    pre-2026-08-25 ``str`` figure exactly, and one applied injection took the table from 6 rows
+    to 7. Both verifiers ACCEPTED, so they agreed, and ``require_independent_agreement`` reads
+    agreement as verification: N-version diversity cannot catch a constraint kind absent from
+    the specification both implementations share. The authority/enforcement partition now lives
+    in :data:`~dataforge.domain.vocabulary.ENFORCEABLE_CONSTRAINT_KINDS` and is asserted total
+    against ``Schema``'s fields. See ``docs/trust/authority-enforcement-correspondence.md``.
     """
     if schema is None:
         return frozenset()
-    covered: set[str] = {
-        column for column, declared in schema.columns.items() if type_discriminates(declared)
-    }
-    covered |= set(schema.pii_columns)
-    covered |= set(schema.primary_key_columns)
-    covered |= set(schema.not_null_columns)
-    covered |= set(schema.unique_columns)
-    covered |= {accepted.column for accepted in schema.accepted_values}
-    covered |= {regex.column for regex in schema.regex_constraints}
-    covered |= {bound.column for bound in schema.domain_bounds}
-    covered |= {relationship.column for relationship in schema.relationships}
-    for dependency in schema.aggregate_dependencies:
-        covered.add(dependency.source_column)
-        covered.add(dependency.target_column)
-    for fd in schema.functional_dependencies:
-        covered.update(fd.determinant)
-        covered.add(fd.dependent)
+    named = columns_named_by_constraint_kind(schema)
+    covered: set[str] = set()
+    for kind, columns in named.items():
+        if constraint_kind_confers_authority(kind):
+            covered |= columns
     return frozenset(covered)
 
 

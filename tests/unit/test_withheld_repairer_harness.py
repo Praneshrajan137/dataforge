@@ -129,8 +129,75 @@ class TestTheMeasuredMechanism:
 class TestHarnessScopeDoesNotWidenProductScope:
     """Measuring a non-member must not make it a member."""
 
+    @staticmethod
+    def _registrable_repairer_keys() -> frozenset[str]:
+        """Every key ``build_repairers`` can register, derived by AST.
+
+        Static rather than by calling it with every flag on, because ``allow_llm=True``
+        constructs an ``LLMCorrectorRepairer`` and a unit test must not depend on that being
+        constructible. Reads the dict literal's keys and every ``registry[...] = `` assignment.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        from dataforge.repairers import build_repairers
+
+        tree = ast.parse(textwrap.dedent(inspect.getsource(build_repairers)))
+        keys: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Dict):
+                for key in node.keys:
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                        keys.add(key.value)
+            if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant):
+                value = node.slice.value
+                if isinstance(value, str):
+                    keys.add(value)
+        return frozenset(keys)
+
+    def test_the_measurable_scope_is_total_over_registrable_repairers(self) -> None:
+        """Every repairer the product can register is measured or excluded WITH A REASON.
+
+        This replaces a pair of lower-bound assertions (``CONSTRAINT_CHECKABLE_DETECTORS <
+        measurable`` plus two named members) that structurally could not see a missing member.
+        Three were missing: ``decimal_shift``, ``entity_consensus`` and ``outlier``. `CLAUDE.md`
+        names this harness as what replaces the retired 0.7926 headline, so an unseen hole in its
+        population is a hole in the evidence that replaced a headline.
+
+        The shape is the one `PRODUCT.md` 1.3 asks for and that
+        ``ENFORCEABLE_CONSTRAINT_KINDS`` uses: enumerate the artifact, and give the remainder a
+        name and a reason rather than letting it be absence.
+        """
+        registrable = self._registrable_repairer_keys()
+        measured = set(harness.MEASURABLE_DETECTORS)
+        excluded = set(harness.UNMEASURED_DETECTORS)
+
+        assert len(registrable) >= 8, (
+            f"only {len(registrable)} registrable repairer keys parsed from build_repairers; the "
+            "AST derivation has stopped working and this assertion is now vacuous"
+        )
+        unaccounted = registrable - measured - excluded
+        assert unaccounted == set(), (
+            f"repairer(s) {sorted(unaccounted)} can be registered by build_repairers but are "
+            "neither measured by this harness nor listed in UNMEASURED_DETECTORS with a reason. "
+            "A repairer that is silently unmeasured is a write path with no committed figure."
+        )
+        assert measured & excluded == set(), (
+            f"{sorted(measured & excluded)} is both measured and excluded; the scope is incoherent"
+        )
+
+    def test_every_exclusion_states_a_reason(self) -> None:
+        """An exemption without a reason is an exemption nobody can review."""
+        for name, reason in harness.UNMEASURED_DETECTORS.items():
+            assert len(reason.strip()) >= 80, f"{name} has no substantive reason recorded"
+
     def test_the_measurable_set_is_a_strict_superset_of_the_allowlist(self) -> None:
-        """Non-vacuity for the measurement: it must reach detectors the product cannot."""
+        """Non-vacuity for the measurement: it must reach detectors the product cannot.
+
+        Kept alongside the totality test above, not replaced by it: totality would be satisfied by
+        excluding everything, and this is what forbids that.
+        """
         measurable = set(harness.MEASURABLE_DETECTORS)
 
         assert set(CONSTRAINT_CHECKABLE_DETECTORS) < measurable

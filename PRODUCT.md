@@ -141,6 +141,28 @@ protocol.
   `eval/preregistration/entailment_strength.md`. What has **not** changed is the limit itself: a
   weak premise still yields a weak proof, and the gate cannot judge whether the constraints you
   declared are the right ones.
+
+  **The same defect had a third instance, closed 2026-09-14, and it is the sharpest of the three
+  because the specification was already correct.** Requiring a declared *type* to discriminate
+  fixed types and nothing else. `authoritative_columns` granted authority for **ten** constraint
+  kinds while `SMTVerifier` and `DirectVerifier` enforce **six**, so declaring a `relationships`
+  or `aggregate_dependencies` constraint made an untrusted value `proven` with nothing able to
+  reject it — while `entailment_strength.md` lines 29-36 had specified exactly six conditions all
+  along. Adding one relationship field to the permissive premise took it from 0 writes to **11,
+  corrupting 10 of 14**, reproducing the pre-2026-08-25 `str` figure exactly, and one applied
+  injection took the table from 6 rows to 7
+  ([docs/trust/authority-enforcement-correspondence.md](docs/trust/authority-enforcement-correspondence.md)).
+
+  Two things about it belong in this file rather than only in a decision log. **The realistic path
+  in was dbt**, not an adversary: `dataforge/integrations/dbt.py` maps dbt's built-in
+  `relationships` test onto the field, so importing a manifest reached it. And **N-version
+  diversity could not catch it** — both verifiers are written from the same `Schema` and omit the
+  same kinds, so both returned ACCEPT, they agreed, and `require_independent_agreement` read
+  agreement as verification. The independence that makes the verifier pair valuable is
+  independence of *implementation*, not of *specification*. Section 1.3's rule about deriving a
+  gate's population now applies to a population nobody had identified as one: the authority set is
+  asserted **total** against `Schema`'s own fields, so a new constraint kind fails a test rather
+  than silently conferring proof.
 - **Not that a MINED constraint can authorise a write.** Since 2026-09-07 write authority
   follows a constraint's **provenance**, not the miner's confidence in it. A dependency
   discovered in your table and accepted in `dataforge constraints review` drives detection and
@@ -259,6 +281,31 @@ where effort goes, not about a single fix:
   is not evidence the old gate worked: it could not have found one. **A gate nobody has seen fail on
   a case it newly covers has not been shown to cover it**, so a fix of this kind must ship with a
   planted claim that fails against the frozen version and passes against the derived one.
+
+  **This rule is now mechanically enforced rather than asserted (2026-09-14).** It had been stated
+  here as a maxim and violated four more times after it was written — `_TRUST_DOCS` policing 2 of 45
+  documents, `authoritative_columns` granting authority for 10 kinds against 6 enforced,
+  `_DEFAULT_THRESHOLDS` covering 8 of 12 issue types, and `MEASURABLE_DETECTORS` covering 5 of 8
+  repairers behind a lower-bound assertion that could not see a missing member. The reason it kept
+  happening is that `scripts/ci/gate_population.py`, the meta-gate whose whole job is to make such
+  narrowing visible, **ran in zero CI workflows**: its only invocation passed it as an ignored argv
+  entry to a different script, so it reported PASS while a front-matter check ran. It also
+  under-counted its own subject, deriving 40 of 47 gate steps.
+
+  The enforcement pattern is borrowed, not invented, and the borrowing matters more than the fix.
+  DO-178C, ISO 26262 and IEC 62304 achieve traceability completeness by **enumerating the artifact,
+  not the links**: an unlinked requirement is not silent, it is a *derived requirement* — a named
+  category with an obligation attached — and untraceable code is *dead* or *deactivated code* with
+  an explicit verification objective (Table A-7 Objective 9). So the general form of this rule is:
+  enumerate the artifact totally, give the remainder a name and a reason, and **refuse on anything
+  unnameable**. `ENFORCEABLE_CONSTRAINT_KINDS`/`UNENFORCEABLE_CONSTRAINT_KINDS`,
+  `MEASURABLE_DETECTORS`/`UNMEASURED_DETECTORS`, the totality assertion on `_DEFAULT_THRESHOLDS`,
+  and `gate_population`'s raise-on-unresolvable step now all have that shape.
+  `scripts/ci/claim_coverage.py` applies it to the published prose, where it found that only a small
+  minority of decimal figures are bound to evidence at all — the measured share, and the named
+  categories the rest fall into, are in `docs/trust/claim-coverage-census.md`. The figure is
+  deliberately not restated here: it is an output of that census, and a document the census surveys
+  cannot quote it without changing it.
 - **Measure the path that writes, unconditionally.** The label-free repairer reported precision
   1.0000 on hospital when scored only on cells that were already errors, and corrupted 86
   previously-correct cells when scored over everything it touched. Conditional precision cannot show

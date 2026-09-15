@@ -35,12 +35,25 @@ from dataforge.transactions.revert import revert_transaction
 from tests.adversarial.corpus import (
     PERMISSIVE_SCHEMA,
     TIGHT_SCHEMA,
+    UNENFORCEABLE_AGGREGATE_SCHEMA,
+    UNENFORCEABLE_RELATIONSHIP_SCHEMA,
     Attack,
     CorpusOutcome,
     build_corpus,
     clopper_pearson_upper,
     truth,
     write_table,
+)
+
+#: Every premise the corpus defines. Used where an invariant must hold under ALL of them --
+#: structural properties such as table shape are not premise-dependent, and testing one only
+#: under the premise that upholds it is how the shape check missed an applied newline
+#: injection that took the table from 6 rows to 7.
+_ALL_PREMISES: tuple[tuple[str, Schema], ...] = (
+    ("tight", TIGHT_SCHEMA),
+    ("permissive", PERMISSIVE_SCHEMA),
+    ("unenforceable_relationship", UNENFORCEABLE_RELATIONSHIP_SCHEMA),
+    ("unenforceable_aggregate", UNENFORCEABLE_AGGREGATE_SCHEMA),
 )
 
 
@@ -323,7 +336,6 @@ def test_a_permissive_premise_costs_the_ability_to_write_not_the_guarantee(sourc
 
     tight = run_corpus(source, TIGHT_SCHEMA)
     permissive = run_corpus(source, PERMISSIVE_SCHEMA)
-
     tight_bad = [name for name in tight.corruptions if corpus[name].discriminable]
     permissive_bad = [name for name in permissive.corruptions if corpus[name].discriminable]
 
@@ -359,6 +371,58 @@ def test_a_permissive_premise_costs_the_ability_to_write_not_the_guarantee(sourc
     )
 
 
+def test_an_unenforceable_premise_cannot_write_either(source: Path) -> None:
+    """The 2026-08-25 rule closed the `str` door; this pins the equivalent one shut.
+
+    Requiring a declared TYPE to discriminate took the permissive premise from 10 of 14
+    constraint-violating writes to 0. But `authoritative_columns` granted authority for ten
+    constraint kinds while the verifiers enforce six, so naming a column in a `relationships`
+    or `aggregate_dependencies` declaration conferred `proven` on a value nothing could reject.
+
+    Each premise here is `PERMISSIVE_SCHEMA` plus exactly ONE added field, so the outcome is
+    attributable to that field alone. Measured before the fix, each wrote 11 cells and
+    corrupted 10 of 14 -- reproducing the pre-2026-08-25 figure exactly. Recorded in
+    `eval/results/trust_ledger_adversarial.json` and
+    `docs/trust/authority-enforcement-correspondence.md`.
+
+    The teeth point the same way as the permissive test's: this fails if an unenforceable
+    premise ever writes again, and the tight premise's legitimate repair is re-asserted here
+    so the rule cannot be satisfied by refusing everything.
+    """
+    corpus = {attack.name: attack for attack in build_corpus()}
+    discriminable_total = sum(1 for attack in corpus.values() if attack.discriminable)
+    tight = run_corpus(source, TIGHT_SCHEMA)
+
+    for premise_name, schema in _ALL_PREMISES:
+        if not premise_name.startswith("unenforceable"):
+            continue
+        outcome = run_corpus(source, schema)
+        bad = [name for name in outcome.corruptions if corpus[name].discriminable]
+
+        print(
+            f"\n{premise_name}: {outcome.applied} written, {len(bad)} of "
+            f"{discriminable_total} discriminable attacks corrupted, upper95="
+            f"{clopper_pearson_upper(len(bad), discriminable_total):.4f}"
+        )
+
+        assert len(bad) == 0, (
+            f"the {premise_name} premise admitted a constraint-violating write. A constraint "
+            "kind no verifier can reject on must not confer authority; see "
+            "dataforge.domain.vocabulary.ENFORCEABLE_CONSTRAINT_KINDS"
+        )
+        assert outcome.applied == 0, (
+            f"the {premise_name} premise wrote a cell. It names every column in a constraint "
+            "kind neither SMTVerifier nor DirectVerifier contains a branch for, so it has no "
+            "authority to write anything"
+        )
+
+    assert tight.applied > 0, (
+        "the tight premise stopped writing its one legitimate repair, so the enforceability "
+        "rule is too strict and has destroyed the verification-layer feature rather than "
+        "corrected it. Do not relax this assertion; revert the rule"
+    )
+
+
 def test_every_blocked_attack_has_an_honest_reason(source: Path) -> None:
     """A block with no reason, or the wrong reason, is not an honest refusal."""
     outcome = run_corpus(source, TIGHT_SCHEMA)
@@ -384,29 +448,39 @@ def test_the_table_shape_is_never_changed(source: Path) -> None:
 
     An injected newline or quote that changes the row or column count silently reinterprets
     every downstream read, so it is checked separately from value correctness.
-    """
-    for attack in build_corpus():
-        write_table(source)
-        if attack.pre_corrupt is not None:
-            row, column, wrong = attack.pre_corrupt
-            _poke(source, row, column, wrong)
-        expected_lines = source.read_text(encoding="utf-8").splitlines()
 
-        verify_and_apply(
-            VerifyAndApplyRequest(
-                source_path=source,
-                fixes=[attack.fix],
-                mode="apply",
-                schema=TIGHT_SCHEMA,
-                confirm_escalations=True,
-                proposer="adversarial-corpus",
+    **This ran only under TIGHT_SCHEMA until 2026-09-14, and that was the defect**: a
+    structural invariant was tested solely under the premise that holds it. Measured under a
+    premise whose columns were covered by an unenforceable constraint kind,
+    ``newline-injection-into-city`` was APPLIED and took the table from 6 rows to 7, moving the
+    column count on two of them. Shape is not a premise-dependent property, so it is now
+    asserted under every premise the corpus defines -- which is also what makes this test able
+    to fail if the authority rule regresses.
+    """
+    for premise_name, schema in _ALL_PREMISES:
+        for attack in build_corpus():
+            write_table(source)
+            if attack.pre_corrupt is not None:
+                row, column, wrong = attack.pre_corrupt
+                _poke(source, row, column, wrong)
+            expected_lines = source.read_text(encoding="utf-8").splitlines()
+
+            verify_and_apply(
+                VerifyAndApplyRequest(
+                    source_path=source,
+                    fixes=[attack.fix],
+                    mode="apply",
+                    schema=schema,
+                    confirm_escalations=True,
+                    proposer="adversarial-corpus",
+                )
             )
-        )
-        actual_lines = source.read_text(encoding="utf-8").splitlines()
-        assert len(actual_lines) == len(expected_lines), (
-            f"{attack.name} changed the row count: {len(expected_lines)} -> {len(actual_lines)}"
-        )
-        for index, line in enumerate(actual_lines):
-            assert line.count(",") == expected_lines[index].count(","), (
-                f"{attack.name} changed the column count on line {index}"
+            actual_lines = source.read_text(encoding="utf-8").splitlines()
+            assert len(actual_lines) == len(expected_lines), (
+                f"[{premise_name}] {attack.name} changed the row count: "
+                f"{len(expected_lines)} -> {len(actual_lines)}"
             )
+            for index, line in enumerate(actual_lines):
+                assert line.count(",") == expected_lines[index].count(","), (
+                    f"[{premise_name}] {attack.name} changed the column count on line {index}"
+                )

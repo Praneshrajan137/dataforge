@@ -194,6 +194,41 @@ jobs:
       - name: Auto-apply mutants MUST all die
         run: make mutation-gate
 
+  # Added 2026-09-14, and it is the sixth gate found unable to fail -- the one that makes every
+  # other gate's DISAPPEARANCE detectable, so its absence hid the class rather than an instance.
+  #
+  # `scripts/ci/gate_population.py` was invoked in exactly one place, inside the backend gate, as
+  #
+  #     [PYTHON, "scripts/ci/hf_space_frontmatter.py", "scripts/ci/gate_population.py", "--check"]
+  #
+  # which is ONE interpreter running hf_space_frontmatter.py with two argv entries it never reads.
+  # The step printed "HF Space YAML front-matter valid" and reported PASS under the name "gate
+  # population". `gate_population.py` never ran, in this workflow or any other.
+  #
+  # Note the comment above the test-map job in this same file, and the one above `mutation-gate`
+  # in the Makefile: both justify their existence with "was frozen against removal by
+  # scripts/ci/gate_population.py -- and no workflow ever executed it". They cite this gate as the
+  # trustworthy freezing mechanism in the very sentence explaining that unexecuted protection is
+  # worthless. Every "frozen against removal" claim in this repository was false until today.
+  #
+  # A separate job for the same reason as mutation-gate: it collects the full suite to enumerate
+  # node ids, so folding it into the matrix would pay that cost per matrix entry for no extra
+  # information. No `needs:`, so it starts at t=0.
+  gate-population:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - name: No gate, test, mutant or claim may vanish unexplained
+        run: make gate-population
+      - name: No new unsourced number in published prose
+        run: make claim-coverage
+
   # Added 2026-09-01. `fail_under = 82` has been in pyproject.toml's [tool.coverage.report]
   # and was read by nothing: `make coverage` is human-invoked and writes an HTML report no
   # workflow opens. A configured floor no gate consults is indistinguishable from no floor.

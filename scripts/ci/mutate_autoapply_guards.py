@@ -268,6 +268,36 @@ MUTANTS: tuple[Mutant, ...] = (
         ),
     ),
     Mutant(
+        name="M26-unenforceable-constraint-confers-authority-again",
+        target="dataforge/domain/vocabulary.py",
+        old="    return kind in ENFORCEABLE_CONSTRAINT_KINDS",
+        new="    return kind not in {'nonexistent_kind'}",
+        tests=(
+            "tests/adversarial/test_corpus_gate.py",
+            "tests/unit/test_authority_enforcement_correspondence.py",
+        ),
+        why=(
+            "the THIRD instance of the defect M15 covers, and the sharpest, because the "
+            "specification was already correct. authoritative_columns granted authority for ten "
+            "Schema constraint kinds while SMTVerifier and DirectVerifier enforce six, so "
+            "declaring a `relationships` or `aggregate_dependencies` constraint made an untrusted "
+            "value 'proven' with nothing able to reject it -- while entailment_strength.md lines "
+            "29-36 had specified exactly six conditions all along. Measured in "
+            "eval/results/trust_ledger_adversarial.json: adding ONE relationship field to the "
+            "permissive premise, changing nothing else, took it from 0 writes to 11 and corrupted "
+            "10 of 14, reproducing the pre-2026-08-25 str figure exactly, and one applied "
+            "injection took the table from 6 rows to 7. The realistic path in was dbt rather than "
+            "an adversary: integrations/dbt.py maps dbt's built-in relationships test onto the "
+            "field. N-version diversity could not catch it, because both verifiers are written "
+            "from the same Schema and omit the same kinds, so both ACCEPTED, they agreed, and "
+            "require_independent_agreement reads agreement as verification -- the independence "
+            "that makes the pair valuable is of IMPLEMENTATION, not of SPECIFICATION. The mutant "
+            "restores authority by making the predicate true for everything except a name no "
+            "Schema field has, so it cannot be killed by a test that merely checks the predicate "
+            "rejects nonsense"
+        ),
+    ),
+    Mutant(
         name="M16-fd-majority-reverted-to-plurality",
         target="dataforge/repairers/fd_violation.py",
         old="        if top_count * 2 > sum(counts.values()):",

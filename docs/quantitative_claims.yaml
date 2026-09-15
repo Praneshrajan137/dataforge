@@ -1652,3 +1652,131 @@ claims:
     note: >-
       The oracle premise never needed the flag because 54 is under the cap. It never looked
       better than the declared premise; it looked smaller.
+
+  # --- Authority must correspond to enforcement (2026-09-14) -----------------
+  # The BEFORE numbers (11 writes, 10 corruptions, 6 rows -> 7) are deliberately NOT
+  # registered here. They are historical facts about code that no longer exists, so no
+  # artifact can carry them; they live in the generated `correspondence` string and in the
+  # write-up, exactly as the pre-2026-08-25 "10 of 14" does in `headline`. Only the CURRENT
+  # arms are artifact-bound, because only they can drift.
+
+  - id: authority_correspondence_relationship_writes
+    doc: docs/trust/authority-enforcement-correspondence.md
+    artifact: eval/results/trust_ledger_adversarial.json
+    pointer: /premises/unenforceable_relationship/discriminable/cells_applied
+    format: "{:d}"
+    expect: "0"
+    context: "| `unenforceable_relationship` after |"
+    note: >-
+      P5. A premise covering every column via a relationship declaration now writes nothing.
+      Before the fix this arm wrote 11 cells and corrupted 10 of 14, reproducing the
+      pre-2026-08-25 `str` figure exactly.
+
+  - id: authority_correspondence_relationship_corruptions
+    doc: docs/trust/authority-enforcement-correspondence.md
+    artifact: eval/results/trust_ledger_adversarial.json
+    pointer: /premises/unenforceable_relationship/discriminable/corruptions
+    format: "{:d}"
+    expect: "0"
+    context: "| `unenforceable_relationship` after |"
+    note: >-
+      The corruption count for the same arm. Registered separately from the write count
+      because a zero-write arm and a zero-corruption arm are different claims, and an arm
+      that wrote without corrupting would satisfy one and not the other.
+
+  - id: authority_correspondence_aggregate_writes
+    doc: docs/trust/authority-enforcement-correspondence.md
+    artifact: eval/results/trust_ledger_adversarial.json
+    pointer: /premises/unenforceable_aggregate/discriminable/cells_applied
+    format: "{:d}"
+    expect: "0"
+    context: "| `unenforceable_aggregate` after |"
+    note: >-
+      P3/P5. Identical to the relationship arm both before and after, which refuted the
+      prediction that `_aggregate_sensitive` would make it behave differently. An escalation
+      is cleared by `confirm_escalations`, the same flag an untrusted write already needs.
+
+  - id: authority_correspondence_tight_still_writes
+    doc: docs/trust/authority-enforcement-correspondence.md
+    artifact: eval/results/trust_ledger_adversarial.json
+    pointer: /premises/tight/discriminable/cells_applied
+    format: "{:d}"
+    expect: "1"
+    context: "| `tight` | 1 |"
+    note: >-
+      K3, the non-vacuity leg. The rule removes free authority, not the ability to declare
+      authority. If this reaches 0 the enforceability rule is too strict and destroyed the
+      verification-layer feature; revert it rather than relaxing this claim.
+
+  - id: authority_correspondence_permissive_unchanged
+    doc: docs/trust/authority-enforcement-correspondence.md
+    artifact: eval/results/trust_ledger_adversarial.json
+    pointer: /premises/permissive/discriminable/cells_held
+    format: "{:d}"
+    expect: "14"
+    context: "| `permissive` | 0 | 0 | 0 | 14 |"
+    note: >-
+      P4. Adding two premises to the harness must not perturb an existing arm. K1 in the
+      pre-registration binds this to the committed artifact field-for-field, and the harness
+      itself refuses to report a new arm if an old one moved.
+
+  - id: claim_coverage_bound_share
+    doc: docs/trust/claim-coverage-census.md
+    artifact: eval/results/claim_coverage.json
+    pointer: /bound_share
+    format: "{:.4f}"
+    expect: "0.0841"
+    context: "**Bound share: 0.0841.**"
+    note: >-
+      P2 pre-registered a range of 5-20% rather than a point value, because the denominator
+      depends on extraction choices nobody had fixed before measuring. Registered against the
+      artifact the census writes, so the document announcing a coverage gate is itself covered.
+      A LOWER BOUND on the true claim population, never coverage of all published claims:
+      statcheck reports ~60% recall doing the same job in a stricter domain.
+
+  - id: claim_coverage_bound_count
+    doc: docs/trust/claim-coverage-census.md
+    artifact: eval/results/claim_coverage.json
+    pointer: /by_category/BOUND
+    format: "{:d}"
+    expect: "89"
+    context: "| **BOUND** | **89** |"
+    note: >-
+      Occurrences, not distinct claims: a bound value appearing twice in one document counts
+      twice, because drift is per occurrence.
+
+  - id: claim_coverage_unsourced_count
+    doc: docs/trust/claim-coverage-census.md
+    artifact: eval/results/claim_coverage.json
+    pointer: /by_category/UNSOURCED
+    format: "{:d}"
+    expect: "772"
+    context: "| **UNSOURCED** | **772** |"
+    note: >-
+      The grandfathered backlog the ratchet freezes. K3 required ratcheting on this DECREASING
+      rather than on BOUND increasing: a ratchet on registered-claim count is satisfiable by
+      registering the easiest numbers, which measures compliance instead of coverage.
+
+  - id: claim_coverage_restated_count
+    doc: docs/trust/claim-coverage-census.md
+    artifact: eval/results/claim_coverage.json
+    pointer: /by_category/RESTATED
+    format: "{:d}"
+    expect: "185"
+    context: "| **RESTATED** | **185** |"
+    note: >-
+      The sharpest finding. Values bound in one document and restated in another that binds
+      nothing, so a copy can drift alone with every gate green. README.md repeats 0.1918,
+      1.0000 and 0.4599 and is not a registered document at all.
+
+  - id: claim_coverage_extracted_total
+    doc: docs/trust/claim-coverage-census.md
+    artifact: eval/results/claim_coverage.json
+    pointer: /extracted_figures
+    format: "{:,}"
+    expect: "1,058"
+    context: "| total extracted | **1,058** |"
+    note: >-
+      Decimals with two or more fractional digits, fenced code excluded, integers and one-place
+      decimals not counted. K2 required publishing the false-positive classes rather than a
+      ratio over a junk denominator: 8 arXiv ids were excluded as a declared class.
