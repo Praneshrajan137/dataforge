@@ -159,6 +159,17 @@ def _attestation_fields(
     fix whose provenance is untrusted and which is proven by schema rather than by
     construction. Omitting them made the attestation unavailable for the guardrail tool's
     entire reason for existing.
+
+    It is passed to ``attest_repair`` TWICE, and both are load-bearing. ``constraints`` is the
+    schema file as authored, for ``_check_strength``. ``authority_schema`` is the parsed
+    ``Schema``, from which ``authority_is_entailed`` recomputes the authoritative column set and
+    compares it to the receipt's claim. Added 2026-09-16 with that check: for one commit this
+    call passed the first and not the second, so every applied repair carrying an authority claim
+    had it WITHHELD here while the CLI attested it fine -- exactly the drift the paragraph above
+    says sharing ``attest_repair`` prevents. Sharing the function is not enough when the
+    arguments are assembled twice; `mypy --strict` cannot see it either, because the parameter is
+    optional by necessity (a repair with no declared schema has no premise to publish). Caught by
+    ``dataforge-mcp``'s own suite, which ``pytest tests/`` does not collect.
     """
     from dataforge import __version__
     from dataforge.attestation import attest_repair
@@ -186,6 +197,7 @@ def _attestation_fields(
         tool_version=__version__,
         produced_at=datetime.now(UTC).isoformat(),
         constraints=constraints,
+        authority_schema=schema,
         journal_head_sha256=None,
         data_bytes=source_path.read_bytes() if source_path.is_file() else None,
         witnesses=witnesses_for_applied_fixes(source_path, applied_fixes, schema),
