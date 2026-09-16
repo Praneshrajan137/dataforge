@@ -25,6 +25,7 @@ from dataforge.attestation import (
     sign_attestation,
     verify_attestation,
 )
+from dataforge.domain.premise import PREMISE_FORMAT
 from dataforge.engine.repair import RepairPipelineRequest, run_repair_pipeline
 
 DATA = b"amount\n100\n104\n98\n103\n101\n106\n99\n1020\n"
@@ -103,6 +104,12 @@ def test_external_fix_on_a_covered_column_verifies() -> None:
             "accepted_constraint_ids": ["c1"],
             "constraints_digest": {"sha256": "d" * 64},
             "constraints": {"columns": {"amount": "int"}},
+            # Added 2026-09-16. Before `authority_is_entailed`, this fixture claimed authority over
+            # `amount` and published nothing a reader could derive that claim from -- and verified.
+            # That was the shape of every attestation the tool had ever emitted. The premise is now
+            # required for the claim to stand, and `int` is in DISCRIMINATING_COLUMN_TYPES, so this
+            # one entails exactly the column claimed.
+            "premise": {"premise_format": PREMISE_FORMAT, "columns": {"amount": "int"}},
         },
         fixes=[
             {

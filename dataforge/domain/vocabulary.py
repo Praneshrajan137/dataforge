@@ -45,6 +45,18 @@ __all__ = [
     "ALL_PROVENANCE",
     "CALIBRATED_PROVENANCE",
     "CONSTRAINT_CHECKABLE_DETECTORS",
+    "DISCRIMINATING_COLUMN_TYPES",
+    "ENCODABLE_COLUMN_TYPES",
+    "ENCODABLE_FLOAT_TYPES",
+    "ENCODABLE_INT_TYPES",
+    "ENCODABLE_STR_TYPES",
+    # Added to __all__ 2026-09-16, and the omission is worth naming. This constant is imported by
+    # `dataforge/domain/premise.py`, asserted by two tests, and now published in SPEC section 6.4.2 --
+    # public by every measure except this list. Because `generate_domain_vocabulary.py` derives its
+    # population from `__all__`, a constant absent from here escapes the projection-coverage gate
+    # entirely, so the browser could silently lack half the authority rule with no gate objecting.
+    # That is a population-derivation hole in a gate, and it is the reason this line exists.
+    "ENFORCEABLE_CONSTRAINT_KINDS",
     "INDEPENDENT_VERIFICATION_HUMAN",
     "NEXT_ACTIONS",
     "NEXT_ACTION_HUMAN",
@@ -157,20 +169,83 @@ ALL_PROVENANCE: Final[frozenset[str]] = TRUSTED_PROVENANCE | UNTRUSTED_PROVENANC
 # `timestamp` -- which genuinely narrow -- than a new synonym for "anything". Silently
 # revoking authority from every real schema using an unlisted type would be a regression with
 # no evidence behind it. The set is pinned by test rather than left to drift.
+#
+# **Superseded 2026-09-16. The paragraph above was wrong, and it was wrong in the way this
+# module's own contract predicts.** "An unrecognised type name confers authority" was defended
+# on the grounds that a novel spelling is likely to genuinely narrow. It is: `date` and
+# `timestamp` do narrow. The step that does not follow is that narrowing implies CHECKABLE. No
+# verifier can encode `date` -- `direct.py` returns UNKNOWN for any type outside the encodable
+# set -- so declaring it conferred authority that nothing could act on. That is the same defect
+# as the ten-kinds-versus-six divergence closed on 2026-09-14, one axis over: authority granted
+# where enforcement is absent.
+#
+# The set is retained because it still answers a distinct question -- which types mean "no
+# constraint" -- and `ENCODABLE_STR_TYPES` below must be subtracted from the encodable set to
+# get the authoritative one. It is no longer the authority rule.
 NON_DISCRIMINATING_COLUMN_TYPES: Final[frozenset[str]] = frozenset(
     {"", "str", "string", "text", "object", "any"}
 )
 
+# --- What the verifiers can actually encode -----------------------------------
+# The single source of truth for the type spellings the verifiers can evaluate. It lives here,
+# in the domain, rather than in either verifier, because THREE modules previously each carried
+# their own copy of these literals -- `verifier/direct.py`, `verifier/smt.py` and
+# `verifier/inferred.py` -- and a hand-maintained table duplicated three times is the exact
+# defect shape recorded four times in this repository's history.
+#
+# **This does not weaken N-version diversity.** The diversity that matters is in HOW each
+# verifier decides -- a z3 encoding versus direct evaluation -- not in how each spells "int".
+# A shared *specification* is what lets the two disagree meaningfully; a shared *implementation*
+# would not. The Axis-1 lesson was that N-version diversity cannot catch what is absent from the
+# specification both implementations share, so the specification is the thing to make explicit.
+#
+# `require_independent_agreement` needs BOTH verifiers to accept, so the operative set is their
+# intersection. All three modules listed identical tokens when this was consolidated, so the
+# intersection and the union coincide; `tests/unit/test_column_scoped_authority.py` asserts that
+# they still do, which is what makes a future divergence a test failure rather than a silent
+# narrowing of what can be proven.
+ENCODABLE_INT_TYPES: Final[frozenset[str]] = frozenset({"int", "integer"})
+ENCODABLE_FLOAT_TYPES: Final[frozenset[str]] = frozenset({"float", "decimal", "real"})
+ENCODABLE_STR_TYPES: Final[frozenset[str]] = frozenset({"str", "string"})
+
+#: Every type spelling a verifier can evaluate. Anything outside this returns UNKNOWN.
+ENCODABLE_COLUMN_TYPES: Final[frozenset[str]] = (
+    ENCODABLE_INT_TYPES | ENCODABLE_FLOAT_TYPES | ENCODABLE_STR_TYPES
+)
+
+#: The types that may confer write authority: **derived**, not enumerated. A type must both
+#: narrow the value space and be encodable by the verifiers, because authority the verifiers
+#: cannot act on is authority that cannot be checked. Subtracting the non-discriminating set
+#: removes `str`/`string`, which are encodable but constrain nothing.
+#:
+#: This is an ALLOWLIST and it fails closed, which reverses the direction of the risk above: a
+#: type spelling nobody has classified now confers NO authority instead of full authority. The
+#: cost of that direction is real and is measured, not assumed -- see
+#: `eval/preregistration/per_kind_authority.md` amendment 2 (P9): a premise declaring every
+#: column `date` writes nothing both before and after this change, because authority plus
+#: UNKNOWN never licensed a write. The change makes `authoritative_columns` truthful in the
+#: attestation; it does not make the engine more restrictive.
+DISCRIMINATING_COLUMN_TYPES: Final[frozenset[str]] = (
+    ENCODABLE_COLUMN_TYPES - NON_DISCRIMINATING_COLUMN_TYPES
+)
+
 
 def type_discriminates(declared_type: str | None) -> bool:
-    """Return whether a declared column type can reject any value at all.
+    """Return whether a declared column type can reject any value **and be checked**.
 
     ``None`` reads as non-discriminating: a column with no declared type constrains nothing,
     and treating the absence of information as authority is the defect this exists to close.
+
+    Membership is tested against :data:`DISCRIMINATING_COLUMN_TYPES`, which is derived from what
+    the verifiers can encode. Before 2026-09-16 this asked only whether the spelling was absent
+    from :data:`NON_DISCRIMINATING_COLUMN_TYPES`, which granted authority to `date`, `datetime`,
+    `bool`, `uuid` and every unrecognised spelling -- all of which the verifiers reject as
+    UNKNOWN. Narrowing the value space and being checkable are different properties, and only
+    the second one can support a claim that a third party could verify.
     """
     if declared_type is None:
         return False
-    return declared_type.strip().lower() not in NON_DISCRIMINATING_COLUMN_TYPES
+    return declared_type.strip().lower() in DISCRIMINATING_COLUMN_TYPES
 
 
 # --- Which schema constraint kinds a verifier can actually reject on ----------
@@ -184,8 +259,13 @@ def type_discriminates(declared_type: str | None) -> bool:
 # in `UNENFORCEABLE_CONSTRAINT_KINDS` below, and the divergence was measured, not reasoned
 # about: adding a relationship on every column to the permissive premise -- one field, nothing
 # else changed -- took it from 0 written to **11 written, 10 of 14 corrupted**, exactly
-# reproducing the pre-2026-08-25 `str` figure, and one applied injection changed the table
-# from 6 rows to 7. The 2026-08-25 rule closed the `str` door and left an identical one open.
+# reproducing the pre-2026-08-25 `str` figure. (An earlier version of this comment added that
+# one applied injection changed the table from 6 rows to 7. That clause is **withdrawn**: it
+# reported a physical line count from an assertion that called `splitlines()` the table shape,
+# and a quoted CSV field may legally contain a newline. Measured with a CSV reader, the parsed
+# row count and every per-row field count are unchanged. See
+# `docs/trust/authority-enforcement-correspondence.md` for the full correction.) The 2026-08-25
+# rule closed the `str` door and left an identical one open.
 # Measured in `eval/results/trust_ledger_adversarial.json` and
 # `docs/trust/authority-enforcement-correspondence.md`.
 #
@@ -580,7 +660,7 @@ def rung_for(
 # **Derived, not restated.**  The same rule that governs ``ALL_ISSUE_TYPES`` and
 # ``REVIEW_REASONS`` applies: every consumer derives the population from this
 # Literal via ``get_args()``.  Hardcoding the population elsewhere is the
-# frozen-population defect ``PRODUCT.md`` §1.3 records twice.
+# frozen-population defect ``PRODUCT.md`` Â§1.3 records twice.
 
 OutcomeCode = Literal[
     "repairs_applied",

@@ -22,6 +22,12 @@ interface VectorCase {
   expect_ok: boolean;
   expect_failures: string[];
   document: unknown;
+  /**
+   * Input bytes, base64, present only on vectors that exercise `data_identity`. Added
+   * 2026-09-16: the vector format carried no field for bytes, so the one check that binds an
+   * attestation to real data was the one check no vector could reach.
+   */
+  data_b64?: string;
 }
 
 interface VectorFile {
@@ -36,6 +42,15 @@ function hexToBytes(hex: string): Uint8Array {
   const out = new Uint8Array(hex.length / 2);
   for (let index = 0; index < out.length; index += 1) {
     out[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+  }
+  return out;
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  const out = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    out[index] = binary.charCodeAt(index);
   }
   return out;
 }
@@ -58,6 +73,7 @@ describe("attestation conformance (TypeScript)", () => {
       const document = testCase.document as Record<string, unknown>;
       const signed = "payload" in document;
       const result = await verifyAttestation(document, {
+        dataBytes: testCase.data_b64 ? base64ToBytes(testCase.data_b64) : null,
         publicKeyRaw: signed ? PUBLIC_KEY : null,
       });
 

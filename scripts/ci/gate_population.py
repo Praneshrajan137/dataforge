@@ -233,14 +233,23 @@ def _pytest_node_ids() -> list[str]:
 
 
 def _mutant_population() -> dict[str, list[str]]:
-    """Return ``{mutant id: sorted test paths}`` by importing the harness's own table."""
-    sys.path.insert(0, str(PROJECT_ROOT))
-    from scripts.ci import mutate_autoapply_guards
+    """Return ``{mutant id: sorted test paths}`` by importing every harness's own table.
 
-    return {
-        mutant.name: sorted(path.replace("\\", "/") for path in mutant.tests)
-        for mutant in mutate_autoapply_guards.MUTANTS
-    }
+    Two harnesses, not one. Until 2026-09-16 only ``mutate_autoapply_guards`` was imported, so a
+    mutant deleted from any sibling harness was invisible to this manifest -- the same narrowing
+    this gate exists to detect, in this gate. ``mutate_domain_vocabulary`` and
+    ``mutate_adversarial_corpus`` remain outside it and are recorded as an open gap in
+    docs/trust/specification-sufficiency.md rather than fixed here, because their mutant tables
+    have a different shape and folding them in silently is how a population stops being derived.
+    """
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from scripts.ci import mutate_attestation, mutate_autoapply_guards
+
+    population: dict[str, list[str]] = {}
+    for harness in (mutate_autoapply_guards, mutate_attestation):
+        for mutant in harness.MUTANTS:
+            population[mutant.name] = sorted(path.replace("\\", "/") for path in mutant.tests)
+    return population
 
 
 def _claim_ids() -> list[str]:

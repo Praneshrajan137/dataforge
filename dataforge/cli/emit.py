@@ -53,6 +53,7 @@ def attest_result(
     *,
     source_path: Path,
     schema_path: Path | None,
+    mined_authority: bool = False,
 ) -> dict[str, Any]:
     """Attest a completed repair, or say why not.
 
@@ -65,13 +66,30 @@ def attest_result(
     reported with its remedy rather than left implicit -- an unexplained missing field is the
     same defect as an unrendered outcome code.
 
-    The declared premise is embedded from the schema FILE rather than from the parsed
-    ``Schema`` object, because the dataclass has no JSON projection and inventing one would
-    put an unreviewed wire format on the critical path of a normative artifact. Embedding it
-    is not optional in general: ``_check_strength`` requires the constraints for any fix whose
-    provenance is untrusted and which is proven by schema rather than by construction, which
+    The declared premise is embedded twice over, and the two serve different purposes.
+    ``constraints`` carries the schema FILE as authored, for a human to read. ``premise`` carries
+    the parsed ``Schema`` projected through :func:`dataforge.domain.premise.premise_to_canonical`,
+    which is what ``authority_is_entailed`` recomputes ``authoritative_columns`` from. Until
+    2026-09-16 only the first existed, and no check compared it to anything -- so the authority
+    claim was unfalsifiable. (The older docstring here said a JSON projection of ``Schema`` would
+    put "an unreviewed wire format on the critical path of a normative artifact". That was a fair
+    objection to an *unreviewed* format and it is answered by reviewing one: SPEC section 6.4
+    specifies it, it fails closed on anything unrecognised, and a property test asserts it
+    round-trips every field.)
+
+    Embedding is not optional in general: ``_check_strength`` requires the constraints for any fix
+    whose provenance is untrusted and which is proven by schema rather than by construction, which
     is precisely the external-proposer case -- that is, precisely ``verify-apply``, the surface
     that until 2026-09-13 never called this function.
+
+    ``mined_authority`` reflects ``--trust-mined-constraints``. Under that flag the engine computes
+    authority from the declared schema MERGED with human-accepted mined candidates, and those
+    candidates are not in the schema file, so the premise projected here would be a strict subset of
+    the basis the claim rests on. Publishing a premise that understates its own authority would be a
+    new instance of the defect this machinery exists to close, so the attestation is **withheld**
+    instead, with the reason named. Threading the effective schema through the receipt is the fix
+    that would restore it; that is a change to a frozen public contract and is deliberately not
+    bundled here.
     """
     from datetime import UTC, datetime
 
@@ -88,6 +106,20 @@ def attest_result(
             )
         }
 
+    if mined_authority and result.receipt.authoritative_columns:
+        return {
+            "attestation_unavailable": (
+                "write authority came from the declared schema merged with accepted mined "
+                "constraints (--trust-mined-constraints), and the mined half is not in the schema "
+                "file. The published premise would therefore understate the authority basis, and "
+                "an attestation whose premise does not entail its own authority claim is worse "
+                "than none. Re-run without --trust-mined-constraints to obtain a portable "
+                "attestation."
+            )
+        }
+
+    declared_schema = load_schema(schema_path) if schema_path is not None else None
+
     applied = [fix.model_dump(mode="json") for fix in result.receipt.applied_fixes]
     emission = attest_repair(
         result.receipt.model_dump(mode="json"),
@@ -95,12 +127,13 @@ def attest_result(
         tool_version=__version__,
         produced_at=datetime.now(UTC).isoformat(),
         constraints=load_schema_mapping(schema_path) if schema_path is not None else None,
+        authority_schema=declared_schema,
         journal_head_sha256=None,
         data_bytes=source_path.read_bytes() if source_path.is_file() else None,
         witnesses=witnesses_for_applied_fixes(
             source_path,
             applied,
-            load_schema(schema_path) if schema_path is not None else None,
+            declared_schema,
         ),
     )
     return emission.as_dict()

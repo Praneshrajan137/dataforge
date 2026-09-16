@@ -2,8 +2,8 @@
   "schema": 1,
   "note": "Derived, never hand-written. Refresh with 'python scripts/ci/gate_population.py --emit' and explain any change in the commit message: a shrinking population is a weaker gate, not a faster one.",
   "pytest": {
-    "node_id_count": 3112,
-    "node_ids_sha256": "89d78ed48b7e5675096186419c5df0f9b1dbeba3c998bd82d4f916ebb174a346",
+    "node_id_count": 3164,
+    "node_ids_sha256": "7e077c39721a84ee0e8999f9fc936f222996b092a783033c3910b13847114e67",
     "node_ids": [
       "tests/adversarial/test_agent_safety.py::TestAgentSafetyIsNonNegotiable::test_pii_overwrite_is_blocked",
       "tests/adversarial/test_agent_safety.py::TestAgentSafetyIsNonNegotiable::test_prompt_injection_in_data_does_not_bypass_gate",
@@ -364,6 +364,24 @@
       "tests/property/test_no_corruption_invariant.py::test_engine_never_corrupts_via_spurious_fd",
       "tests/property/test_no_corruption_invariant.py::test_permissive_policy_never_auto_applies_plausibility_only",
       "tests/property/test_no_corruption_invariant.py::test_write_primitive_refuses_any_unproven_value",
+      "tests/property/test_premise_round_trip.py::TestFailsClosed::test_a_missing_format_is_refused",
+      "tests/property/test_premise_round_trip.py::TestFailsClosed::test_a_non_finite_bound_cannot_be_published",
+      "tests/property/test_premise_round_trip.py::TestFailsClosed::test_a_non_object_premise_is_refused",
+      "tests/property/test_premise_round_trip.py::TestFailsClosed::test_a_rule_violating_its_own_constraint_is_refused",
+      "tests/property/test_premise_round_trip.py::TestFailsClosed::test_a_set_field_given_a_string_is_refused",
+      "tests/property/test_premise_round_trip.py::TestFailsClosed::test_a_wrong_container_shape_is_refused",
+      "tests/property/test_premise_round_trip.py::TestFailsClosed::test_an_unknown_rule_attribute_is_refused",
+      "tests/property/test_premise_round_trip.py::TestFailsClosed::test_an_unknown_top_level_key_is_refused",
+      "tests/property/test_premise_round_trip.py::TestFailsClosed::test_an_unrecognised_format_is_refused",
+      "tests/property/test_premise_round_trip.py::TestRoundTrip::test_authority_survives_the_round_trip",
+      "tests/property/test_premise_round_trip.py::TestRoundTrip::test_empty_fields_are_omitted_not_emitted",
+      "tests/property/test_premise_round_trip.py::TestRoundTrip::test_the_projection_is_deterministic",
+      "tests/property/test_premise_round_trip.py::TestRoundTrip::test_the_projection_is_json_native",
+      "tests/property/test_premise_round_trip.py::TestRoundTrip::test_the_projection_reproduces_the_schema",
+      "tests/property/test_premise_round_trip.py::TestTotality::test_a_non_discriminating_type_confers_nothing",
+      "tests/property/test_premise_round_trip.py::TestTotality::test_an_unencodable_type_confers_nothing",
+      "tests/property/test_premise_round_trip.py::TestTotality::test_every_schema_field_is_projected",
+      "tests/property/test_premise_round_trip.py::TestTotality::test_the_existing_attestation_vector_premise_is_valid",
       "tests/property/test_representation_parity.py::test_combined_verdict_is_identical_across_representations",
       "tests/property/test_representation_parity.py::test_contested_verdicts_agree_across_representations[bound satisfied]",
       "tests/property/test_representation_parity.py::test_contested_verdicts_agree_across_representations[bound violated]",
@@ -517,6 +535,10 @@
       "tests/unit/test_attestation_vectors.py::test_vector[accept-coherent-entailment-witness]",
       "tests/unit/test_attestation_vectors.py::test_vector[accept-multiple-subjects-naming-the-same-artifact]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-applied-without-revert-command]",
+      "tests/unit/test_attestation_vectors.py::test_vector[reject-authority-from-a-non-discriminating-type]",
+      "tests/unit/test_attestation_vectors.py::test_vector[reject-authority-from-a-type-no-verifier-can-encode]",
+      "tests/unit/test_attestation_vectors.py::test_vector[reject-authority-wider-than-the-premise-entails]",
+      "tests/unit/test_attestation_vectors.py::test_vector[reject-data-identity-mismatched-bytes]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-entity-consensus-claimed-proven]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-external-off-authority]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-extra-subject-naming-a-different-artifact]",
@@ -524,18 +546,23 @@
       "tests/unit/test_attestation_vectors.py::test_vector[reject-honest-downgrade-must-not-be-upgraded]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-missing-tool-version]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-missing-verification-strength]",
+      "tests/unit/test_attestation_vectors.py::test_vector[reject-premise-with-an-unrecognised-key]",
+      "tests/unit/test_attestation_vectors.py::test_vector[reject-premise-without-a-recognised-format]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-schema-proven-without-embedded-constraints]",
+      "tests/unit/test_attestation_vectors.py::test_vector[reject-signature-from-a-different-key]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-subject-digest-mismatch]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-tampered-signed-payload]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-unknown-provenance]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-unknown-review-reason]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-unrecognised-predicate-type]",
+      "tests/unit/test_attestation_vectors.py::test_vector[reject-unrecognised-statement-type]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-unrecognised-version]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-verifier-rejected]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-witness-whose-support-exceeds-its-group]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-witness-whose-written-value-is-absent-from-its-group]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-witness-with-undeclared-truncation]",
       "tests/unit/test_attestation_vectors.py::test_vector[reject-witness-without-a-strict-majority]",
+      "tests/unit/test_attestation_vectors.py::test_vector[valid-data-identity-with-matching-bytes]",
       "tests/unit/test_attestation_vectors.py::test_vector[valid-deterministic-applied]",
       "tests/unit/test_attestation_vectors.py::test_vector[valid-dry-run]",
       "tests/unit/test_attestation_vectors.py::test_vector[valid-external-on-covered-column]",
@@ -1164,10 +1191,14 @@
       "tests/unit/test_column_scoped_authority.py::TestOneConstraintDoesNotGrantBlanketAuthority::test_fix_on_the_covered_column_still_applies",
       "tests/unit/test_column_scoped_authority.py::TestOneConstraintDoesNotGrantBlanketAuthority::test_fix_on_uncovered_column_is_held",
       "tests/unit/test_column_scoped_authority.py::TestTypeDiscriminates::test_absent_type_does_not_narrow",
-      "tests/unit/test_column_scoped_authority.py::TestTypeDiscriminates::test_real_types_narrow",
+      "tests/unit/test_column_scoped_authority.py::TestTypeDiscriminates::test_an_unrecognised_spelling_confers_nothing",
+      "tests/unit/test_column_scoped_authority.py::TestTypeDiscriminates::test_encodable_numeric_types_narrow",
+      "tests/unit/test_column_scoped_authority.py::TestTypeDiscriminates::test_every_authoritative_type_is_encodable_by_both_verifiers",
+      "tests/unit/test_column_scoped_authority.py::TestTypeDiscriminates::test_narrowing_but_unencodable_types_do_not_confer_authority",
       "tests/unit/test_column_scoped_authority.py::TestTypeDiscriminates::test_spelling_is_normalised",
       "tests/unit/test_column_scoped_authority.py::TestTypeDiscriminates::test_string_spellings_do_not_narrow",
-      "tests/unit/test_column_scoped_authority.py::TestTypeDiscriminates::test_the_denylist_is_exactly_what_is_documented",
+      "tests/unit/test_column_scoped_authority.py::TestTypeDiscriminates::test_the_authoritative_set_is_derived_not_enumerated",
+      "tests/unit/test_column_scoped_authority.py::TestTypeDiscriminates::test_the_non_discriminating_denylist_is_exactly_what_is_documented",
       "tests/unit/test_conformal.py::TestCertifiedCoverageReport::test_reliable_class_reports_bounded_test_error",
       "tests/unit/test_conformal.py::TestCertifiedCoverageReport::test_report_is_json_serializable_and_reproducible",
       "tests/unit/test_conformal.py::TestCertifiedCoverageReport::test_unreliable_class_auto_applies_nothing",
@@ -1764,6 +1795,8 @@
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[adversarial corpus mutants]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[anchor truth]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[attestation conformance]",
+      "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[attestation mutants]",
+      "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[attestation schema projection]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[attestation vector projection]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[auto-apply guard mutants]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[benchmark truth]",
@@ -1794,6 +1827,7 @@
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[side package ruff check]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[side package ruff format --check]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[side package strict mypy]",
+      "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[spec correspondence]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[strict mypy]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[test map coverage]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_a_direct_script_invocation_passes_no_second_script[trust invariants]",
@@ -1808,6 +1842,8 @@
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[adversarial corpus mutants]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[anchor truth]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[attestation conformance]",
+      "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[attestation mutants]",
+      "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[attestation schema projection]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[attestation vector projection]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[auto-apply guard mutants]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[benchmark truth]",
@@ -1838,6 +1874,7 @@
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[side package ruff check]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[side package ruff format --check]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[side package strict mypy]",
+      "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[spec correspondence]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[strict mypy]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[test map coverage]",
       "tests/unit/test_gate_invocation_integrity.py::TestEveryStepRunsTheScriptItNames::test_the_named_script_exists[trust invariants]",
@@ -2797,6 +2834,21 @@
       "tests/unit/test_snapshot_recoverable_gate.py::TestSnapshotRecoverableGate::test_a_snapshot_of_different_content_is_refused",
       "tests/unit/test_snapshot_recoverable_gate.py::TestSnapshotRecoverableGate::test_a_truncated_snapshot_is_refused",
       "tests/unit/test_snapshot_recoverable_gate.py::TestSnapshotRecoverableGate::test_an_unrecorded_snapshot_path_is_refused",
+      "tests/unit/test_spec_correspondence.py::TestItCatchesTheDefectsThatWereReal::test_a_check_implemented_but_not_specified",
+      "tests/unit/test_spec_correspondence.py::TestItCatchesTheDefectsThatWereReal::test_a_check_specified_but_never_implemented",
+      "tests/unit/test_spec_correspondence.py::TestItCatchesTheDefectsThatWereReal::test_a_check_with_no_failure_vector",
+      "tests/unit/test_spec_correspondence.py::TestItCatchesTheDefectsThatWereReal::test_a_closed_vocabulary_that_is_enforced_but_unpublished",
+      "tests/unit/test_spec_correspondence.py::TestItCatchesTheDefectsThatWereReal::test_an_exemption_for_a_check_that_does_have_a_vector",
+      "tests/unit/test_spec_correspondence.py::TestItCatchesTheDefectsThatWereReal::test_an_exemption_that_outlived_its_reason",
+      "tests/unit/test_spec_correspondence.py::TestItRefusesRatherThanReportingAnEmptyPopulation::test_a_block_that_parses_too_few_checks_raises",
+      "tests/unit/test_spec_correspondence.py::TestItRefusesRatherThanReportingAnEmptyPopulation::test_a_duplicated_check_raises",
+      "tests/unit/test_spec_correspondence.py::TestItRefusesRatherThanReportingAnEmptyPopulation::test_a_missing_normative_block_raises",
+      "tests/unit/test_spec_correspondence.py::TestItRefusesRatherThanReportingAnEmptyPopulation::test_an_empty_vector_file_raises",
+      "tests/unit/test_spec_correspondence.py::TestTheCheckNameRegistryRefusesTheUnnameable::test_an_unregistered_check_name_cannot_be_constructed",
+      "tests/unit/test_spec_correspondence.py::TestTheCheckNameRegistryRefusesTheUnnameable::test_every_registered_name_can_be_constructed",
+      "tests/unit/test_spec_correspondence.py::TestTheCheckNameRegistryRefusesTheUnnameable::test_the_population_has_no_duplicates",
+      "tests/unit/test_spec_correspondence.py::TestTheGateIsNotVacuous::test_a_fully_corresponding_population_produces_no_errors",
+      "tests/unit/test_spec_correspondence.py::TestTheGateIsNotVacuous::test_the_real_repository_corresponds",
       "tests/unit/test_spend.py::TestBenchSpendReceipt::test_uses_env_prices_so_the_receipt_matches_the_enforced_cap",
       "tests/unit/test_spend.py::TestBenchSpendReceipt::test_writes_nothing_when_no_llm_calls_were_made",
       "tests/unit/test_spend.py::TestBenchSpendReceipt::test_writes_one_receipt_per_provider_model_pair",
@@ -3128,6 +3180,8 @@
     "adversarial corpus mutants",
     "anchor truth",
     "attestation conformance",
+    "attestation mutants",
+    "attestation schema projection",
     "attestation vector projection",
     "auto-apply guard mutants",
     "benchmark truth",
@@ -3165,6 +3219,7 @@
     "side package ruff check",
     "side package ruff format --check",
     "side package strict mypy",
+    "spec correspondence",
     "strict mypy",
     "test map coverage",
     "trust invariants",
@@ -3263,14 +3318,62 @@
     "M25-legacy-journal-revert-loses-its-byte-checks": [
       "tests/unit/test_legacy_journal_revert.py",
       "tests/unit/test_transactions.py"
+    ],
+    "A1-envelope-type-unchecked": [
+      "tests/unit/test_attestation_vectors.py"
+    ],
+    "A2-version-accepts-anything": [
+      "tests/unit/test_attestation_vectors.py"
+    ],
+    "A3-vocabulary-fails-open": [
+      "tests/unit/test_attestation_vectors.py"
+    ],
+    "A4-subject-any-instead-of-every": [
+      "tests/unit/test_attestation_vectors.py"
+    ],
+    "A5-data-identity-always-passes": [
+      "tests/unit/test_attestation_vectors.py"
+    ],
+    "A6-reversibility-not-required": [
+      "tests/unit/test_attestation_vectors.py"
+    ],
+    "A7-verdicts-ignore-the-verifier": [
+      "tests/unit/test_attestation_vectors.py"
+    ],
+    "A8-strength-not-re-derived": [
+      "tests/unit/test_attestation_vectors.py"
+    ],
+    "A9-constraints-need-not-be-embedded": [
+      "tests/unit/test_attestation_vectors.py"
+    ],
+    "A10-signature-not-verified": [
+      "tests/unit/test_attestation_vectors.py"
+    ],
+    "A11-witness-majority-becomes-plurality": [
+      "tests/unit/test_attestation_vectors.py"
+    ],
+    "A12-witness-count-need-not-match-support": [
+      "tests/unit/test_attestation_vectors.py"
+    ],
+    "A13-schema-completeness-unchecked": [
+      "tests/unit/test_attestation.py",
+      "tests/unit/test_attestation_vectors.py"
+    ],
+    "A14-check-names-unregistered": [
+      "tests/unit/test_spec_correspondence.py"
+    ],
+    "A15-authority-claim-taken-on-trust": [
+      "tests/unit/test_attestation_vectors.py"
     ]
   },
-  "mutant_count": 26,
+  "mutant_count": 41,
   "mutant_test_paths": [
     "tests/adversarial/test_corpus_gate.py",
     "tests/integration/test_autoapply_decision_table.py",
     "tests/integration/test_playground_smoke.py",
     "tests/unit/test_agent_gate.py",
+    "tests/unit/test_attestation.py",
+    "tests/unit/test_attestation_vectors.py",
     "tests/unit/test_authority_enforcement_correspondence.py",
     "tests/unit/test_certificate_policy_gap.py",
     "tests/unit/test_column_scoped_authority.py",
@@ -3283,6 +3386,7 @@
     "tests/unit/test_safety_filter.py",
     "tests/unit/test_shared_fixtures_verify_themselves.py",
     "tests/unit/test_snapshot_recoverable_gate.py",
+    "tests/unit/test_spec_correspondence.py",
     "tests/unit/test_table_store_patch_plan.py",
     "tests/unit/test_table_store_proven_gate.py",
     "tests/unit/test_transactions.py",
@@ -3373,6 +3477,10 @@
     "p3_hospital_legacy_corruptions",
     "p3_hospital_legacy_repairs",
     "p3_hospital_mined_fds",
+    "per_kind_accepted_values_corruptions",
+    "per_kind_ddl_typical_corruptions",
+    "per_kind_not_null_corruptions",
+    "per_kind_unique_corruptions",
     "premise_flights_candidates",
     "premise_hospital_candidates",
     "premise_hospital_false_dependencies",
@@ -3407,6 +3515,10 @@
     "sota_pclean_hospital_f1",
     "sota_raha_baran_bclean_protocol_hospital_f1",
     "sota_raha_baran_cocoon_rerun_hospital_f1",
+    "spec_sufficiency_arm_a_agreement",
+    "spec_sufficiency_arm_b_agreement",
+    "spec_sufficiency_arm_c_agreement",
+    "spec_sufficiency_arm_c_full_suite",
     "structured_k3_auc",
     "structured_k9_auc",
     "warning_flagged_cells_default",

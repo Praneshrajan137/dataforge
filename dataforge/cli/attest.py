@@ -26,6 +26,8 @@ from rich.console import Console
 from rich.table import Table
 
 from dataforge.attestation import verify_attestation
+from dataforge.cli.common import load_schema, load_schema_mapping
+from dataforge.verifier.schema import Schema
 
 _console = Console(stderr=True)
 
@@ -252,11 +254,22 @@ def build(
     receipt = _extract_receipt(document)
 
     constraint_payload: Mapping[str, Any] | None = None
+    authority_schema: Schema | None = None
     if constraints is not None:
-        loaded = json.loads(constraints.read_text(encoding="utf-8"))
-        if not isinstance(loaded, Mapping):
-            raise typer.BadParameter(f"{constraints} does not contain a JSON object")
+        # Loaded through the same reviewed loaders `--schema` uses, rather than `json.loads`. YAML is
+        # a superset of JSON, so every file that worked before still works, and a plain `.yaml`
+        # schema now works too -- which matters because the premise this must publish is the one the
+        # repair actually ran against, and that file is YAML on every documented path.
+        loaded = load_schema_mapping(constraints)
+        if loaded is None:
+            raise typer.BadParameter(f"{constraints} does not contain a schema object")
         constraint_payload = loaded
+        # Parse the operator's file into a real ``Schema`` so the embedded premise is a projection
+        # of something the engine could actually have used, rather than an opaque blob nobody
+        # checks. Before 2026-09-16 this value was passed straight through and no check compared it
+        # to `authoritative_columns`, so this command could mint a certificate whose authority claim
+        # rested on nothing a reader could inspect.
+        authority_schema = load_schema(constraints)
 
     statement = build_attestation(
         receipt,
@@ -264,6 +277,7 @@ def build(
         produced_at=datetime.now(UTC).isoformat(),
         subject_name=subject_name,
         constraints=constraint_payload,
+        authority_schema=authority_schema,
         journal_head_sha256=journal_head,
     )
 

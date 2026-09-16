@@ -20,6 +20,8 @@
  */
 
 import {
+  DISCRIMINATING_COLUMN_TYPES,
+  ENFORCEABLE_CONSTRAINT_KINDS,
   PROVENANCE_ORDER,
   REVIEW_REASONS,
   SAFETY_VERDICTS,
@@ -55,6 +57,181 @@ function check(name: string, ok: boolean, detail: string, skipped = false): Atte
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The premise wire format's identity. An unrecognised value has no agreed semantics. */
+const PREMISE_FORMAT = "dataforge.premise/v1";
+
+/** The four premise fields holding an unordered set of column names. SPEC section 6.4.1. */
+const PREMISE_SET_FIELDS = [
+  "pii_columns",
+  "primary_key_columns",
+  "not_null_columns",
+  "unique_columns",
+] as const;
+
+/** The six premise fields holding an array of structured rules, and which keys each rule allows. */
+const PREMISE_RULE_FIELDS: Record<string, readonly string[]> = {
+  functional_dependencies: ["determinant", "dependent"],
+  accepted_values: ["column", "values"],
+  regex_constraints: ["column", "pattern"],
+  relationships: ["column", "reference", "reference_column"],
+  domain_bounds: ["column", "min_value", "max_value", "inclusive_min", "inclusive_max"],
+  aggregate_dependencies: ["source_column", "target_column", "aggregate", "group_by"],
+};
+
+const PREMISE_FIELDS = new Set<string>([
+  "columns",
+  ...PREMISE_SET_FIELDS,
+  ...Object.keys(PREMISE_RULE_FIELDS),
+]);
+
+/**
+ * Recompute the authoritative column set from a published premise, per SPEC section 6.4.2.
+ *
+ * Written from the specification rather than ported from the Python. That distinction is not
+ * cosmetic here: this repository has already measured that the "independent" TypeScript verifier was
+ * a PORT of the reference implementation -- a character-identical error string for a check the spec
+ * never mentioned gave it away -- and a second implementation that merely restates the first cannot
+ * disagree with it, so it produces no evidence. The shared inputs are the two projected sets, which
+ * are specification, not implementation.
+ *
+ * Throws a string reason rather than returning a partial set: a premise that is half-understood
+ * would confer authority over whichever fields happened to parse.
+ */
+function authoritativeFromPremise(premise: Record<string, unknown>): Set<string> {
+  if (premise.premise_format !== PREMISE_FORMAT) {
+    throw `premise_format is ${JSON.stringify(premise.premise_format)}, expected "${PREMISE_FORMAT}"`;
+  }
+  const unknown = Object.keys(premise)
+    .filter((key) => key !== "premise_format" && !PREMISE_FIELDS.has(key))
+    .sort();
+  if (unknown.length > 0) {
+    throw `premise has unknown key(s) [${unknown.join(", ")}], refused rather than ignored`;
+  }
+
+  const named = new Map<string, Set<string>>();
+  const put = (kind: string, columns: Iterable<string>) => named.set(kind, new Set(columns));
+
+  // `columns` confers authority only for a type that both narrows and can be encoded.
+  const declared = premise.columns;
+  const typedColumns: string[] = [];
+  if (declared !== undefined && declared !== null) {
+    if (!isRecord(declared)) throw "premise.columns must be an object";
+    for (const [column, spelling] of Object.entries(declared)) {
+      if (typeof spelling !== "string") throw `premise.columns[${column}] must be a string`;
+      if (DISCRIMINATING_COLUMN_TYPES.has(spelling.trim().toLowerCase())) typedColumns.push(column);
+    }
+  }
+  put("columns", typedColumns);
+
+  for (const field of PREMISE_SET_FIELDS) {
+    const value = premise[field];
+    if (value === undefined || value === null) {
+      put(field, []);
+      continue;
+    }
+    if (!Array.isArray(value)) throw `premise.${field} must be an array of strings`;
+    for (const entry of value) {
+      if (typeof entry !== "string") throw `premise.${field} contains a non-string entry`;
+    }
+    put(field, value as string[]);
+  }
+
+  for (const [field, allowedKeys] of Object.entries(PREMISE_RULE_FIELDS)) {
+    const value = premise[field];
+    if (value === undefined || value === null) {
+      put(field, []);
+      continue;
+    }
+    if (!Array.isArray(value)) throw `premise.${field} must be an array of objects`;
+    const columns: string[] = [];
+    for (const rule of value) {
+      if (!isRecord(rule)) throw `premise.${field} contains a non-object entry`;
+      const strayKeys = Object.keys(rule).filter((key) => !allowedKeys.includes(key));
+      if (strayKeys.length > 0) {
+        throw `premise.${field} has unknown key(s) [${strayKeys.sort().join(", ")}]`;
+      }
+      // Which positions a kind NAMES. Both sides of a functional dependency and of an aggregate
+      // dependency are named, because a value in either position is checked by it.
+      if (field === "functional_dependencies") {
+        const determinant = rule.determinant;
+        if (!Array.isArray(determinant) || determinant.length === 0) {
+          throw `premise.${field} rule has an empty determinant`;
+        }
+        for (const entry of determinant) columns.push(String(entry));
+        columns.push(String(rule.dependent));
+      } else if (field === "aggregate_dependencies") {
+        columns.push(String(rule.source_column), String(rule.target_column));
+      } else {
+        if (typeof rule.column !== "string") throw `premise.${field} rule has no column`;
+        if (field === "accepted_values") {
+          const values = rule.values;
+          if (!Array.isArray(values) || values.length === 0) {
+            throw `premise.${field} rule for ${rule.column} has an empty value set`;
+          }
+        }
+        columns.push(rule.column);
+      }
+    }
+    put(field, columns);
+  }
+
+  const authoritative = new Set<string>();
+  for (const [kind, columns] of named) {
+    if (!ENFORCEABLE_CONSTRAINT_KINDS.has(kind)) continue;
+    for (const column of columns) authoritative.add(column);
+  }
+  return authoritative;
+}
+
+/** SPEC section 7 check 13. Three cases, and the distinction between them is normative. */
+function authorityIsEntailed(claimed: Set<string>, premise: unknown): AttestationCheck {
+  const claimedSorted = [...claimed].sort();
+  if (claimed.size === 0) {
+    return check(
+      "authority_is_entailed",
+      true,
+      "no columns are claimed as authoritative, so nothing needs entailing",
+    );
+  }
+  if (premise === null || premise === undefined) {
+    return check(
+      "authority_is_entailed",
+      false,
+      `authority over [${claimedSorted.join(", ")}] is claimed but no premise is published, so the claim cannot be checked by anyone`,
+    );
+  }
+  if (!isRecord(premise)) {
+    return check("authority_is_entailed", false, "authority.premise must be an object");
+  }
+  let entailed: Set<string>;
+  try {
+    entailed = authoritativeFromPremise(premise);
+  } catch (reason) {
+    return check(
+      "authority_is_entailed",
+      false,
+      `the published premise cannot be read, so authority over [${claimedSorted.join(", ")}] cannot be derived from it: ${String(reason)}`,
+    );
+  }
+  const overclaimed = claimedSorted.filter((column) => !entailed.has(column));
+  const underclaimed = [...entailed].filter((column) => !claimed.has(column)).sort();
+  if (overclaimed.length === 0 && underclaimed.length === 0) {
+    return check(
+      "authority_is_entailed",
+      true,
+      `the published premise entails authority over exactly [${claimedSorted.join(", ")}]`,
+    );
+  }
+  const parts: string[] = [];
+  if (overclaimed.length > 0) parts.push(`claimed but not entailed: [${overclaimed.join(", ")}]`);
+  if (underclaimed.length > 0) parts.push(`entailed but not claimed: [${underclaimed.join(", ")}]`);
+  return check(
+    "authority_is_entailed",
+    false,
+    `the published premise does not entail the authority claimed -- ${parts.join("; ")}`,
+  );
 }
 
 function asArray(value: unknown): unknown[] {
@@ -105,7 +282,7 @@ function digestOf(value: unknown): string | null {
  */
 export function verifyStatement(
   statement: unknown,
-  options: { dataBytes?: Uint8Array | null; dataSha256?: string | null } = {},
+  options: { dataSha256?: string | null } = {},
 ): AttestationVerification {
   const checks: AttestationCheck[] = [];
 
@@ -413,13 +590,30 @@ export function verifyStatement(
         "constraints_present",
         hasConstraints,
         hasConstraints
-          ? "embedded constraints support the schema-proven writes"
+          // Corrected 2026-09-16 alongside the Python detail string. This said the constraints
+          // "support the schema-proven writes", which is not what is tested and cannot be: nothing
+          // here compares `constraints` to anything. `authority_is_entailed` tests entailment.
+          ? "a constraint payload is present (presence only -- see authority_is_entailed)"
           : "a write is proven only by schema authority, but no constraints are embedded",
       ),
     );
   } else {
     checks.push(check("constraints_present", true, "no write depends on schema authority"));
   }
+
+  // --- authority_is_entailed ------------------------------------------------
+  // The check that makes `strength_is_earned` mean something. That one derives every fix's strength
+  // from membership in `authority.authoritative_columns` and therefore reads the claim as trusted
+  // input -- so before this existed, a producer could publish any column list beside any premise and
+  // pass all twelve preceding checks. This verifier ACCEPTED all five forgery vectors until it was
+  // written, which is the strongest available evidence that the gap was real and not theoretical.
+  //
+  // The rule is SPEC section 6.4.2, and the two sets it needs are PROJECTED from the Python domain
+  // vocabulary rather than restated here, so the two implementations cannot drift about which kinds
+  // and which types confer authority. That projection was deliberately withheld from the browser
+  // until this consumer existed; see the note in scripts/ci/generate_domain_vocabulary.py.
+  const premise = isRecord(authority) ? authority.premise : null;
+  checks.push(authorityIsEntailed(covered, premise));
 
   // --- entailment witness ---------------------------------------------------
   // NOT the same check as `strength_is_earned`. That one re-derives
@@ -684,10 +878,35 @@ export async function verifyDsseSignature(
  * Composed so the synchronous normative core stays free of crypto: that core is the part
  * a third implementation would port first.
  */
+/**
+ * SHA-256 of raw bytes, as lowercase hex.
+ *
+ * Lives here rather than in `verifyStatement` because that core is deliberately synchronous and
+ * crypto-free, and WebCrypto's digest is async. Until 2026-09-16 `verifyStatement` DECLARED a
+ * `dataBytes` option and never read it, so a caller who passed bytes got `data_identity` silently
+ * skipped while believing it had been checked -- the "quietly performs fewer checks, reports the
+ * same ok" failure the specification's section 6.3 warns about, in the verifier itself.
+ */
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export async function verifyAttestation(
   document: unknown,
-  options: { dataSha256?: string | null; publicKeyRaw?: Uint8Array | null } = {},
+  options: {
+    dataBytes?: Uint8Array | null;
+    dataSha256?: string | null;
+    publicKeyRaw?: Uint8Array | null;
+  } = {},
 ): Promise<AttestationVerification> {
+  const identity = {
+    dataSha256:
+      options.dataSha256 ??
+      (options.dataBytes ? await sha256Hex(options.dataBytes) : null),
+  };
   if (isRecord(document) && "payload" in document && "payloadType" in document) {
     const { check: signatureCheck, statement } = await verifyDsseSignature(
       document,
@@ -701,7 +920,7 @@ export async function verifyAttestation(
         skipped: [],
       };
     }
-    const inner = verifyStatement(statement, { dataSha256: options.dataSha256 ?? null });
+    const inner = verifyStatement(statement, identity);
     const checks = [signatureCheck, ...inner.checks];
     const failures = checks.filter((entry) => !entry.ok && !entry.skipped);
     return {
@@ -711,5 +930,5 @@ export async function verifyAttestation(
       skipped: checks.filter((entry) => entry.skipped),
     };
   }
-  return verifyStatement(document, { dataSha256: options.dataSha256 ?? null });
+  return verifyStatement(document, identity);
 }

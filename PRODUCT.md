@@ -110,10 +110,58 @@ a skip. Their agreement is *by construction* rather than by luck: signing covers
 DSSE-style pre-authentication encoding, not JSON text, which removes canonicalisation from
 the trust base entirely.
 
+**Two claims in the paragraph above are false, corrected 2026-09-16 after measuring the thing
+they assert. Left standing because section 5 forbids rewriting evidence to look better.**
+
+*"an independently-written TypeScript one"* — **it was ported from the Python.** Nine
+user-facing message strings and one code comment are character-identical apart from renamed
+local variables, including the comment *"The shipped decision rule is a STRICT majority, not
+a plurality."* and the clause *"so the written value was not entailed by the rule the product
+implements"* (`dataforge/attestation/__init__.py`:656,658,664,697 against
+`verify.ts`:213,220,226,232,235,257,464,467,470,510). A code comment carries no behaviour, so
+two people writing from one document do not converge on it. That the inference is sound rather
+than merely suggestive is itself measured: a clean-room verifier built for this exercise
+reproduced **one** short phrase over two published field names and **no** comment, which is
+what genuine convergence looks like. This is the defect this file already names one layer down
+at lines 158-162 — *"independence of implementation, not of specification"* — now found in the
+artifact carrying the whole thesis.
+
+*"26 committed vectors covering all 11 normative checks"* — **false twice over.**
+`data_identity` had **zero** vectors, because the vector format carried no field for input
+bytes; and there were never 11 checks to cover. There were four populations: this document's
+§7 listed 11, both implementations ran 12, `verification.checks_available` advertised 10, and
+the enumeration at lines 113-116 below lists a *different* 11 that omits `data_identity`.
+**Two of the four were numerically equal with different members**, which is why comparing
+counts caught nothing. `tests/unit/test_attestation_vectors.py` asserted a hardcoded ten-name
+tuple under the comment *"Every distinct normative check that can fail should be exercised by
+some vector"*, and `attestation_conformance.py` asserted `len(vectors) >= 15` against 26 —
+a lower-bound assertion cannot see a missing member, which is the fifth and sixth instances of
+section 1.3's defect, in the gate that carries the thesis.
+
+**The measurement that established this, and the honest state of the word "without".** Two
+clean-room Java verifiers were built from the published artifacts by agents structurally
+forbidden from reading either existing implementation, then run over all 26 vectors
+([docs/trust/specification-sufficiency.md](docs/trust/specification-sufficiency.md), pre-registered
+in `eval/preregistration/specification_sufficiency.md`). The arm given the specification prose
+alone agreed on 17 of 26 and **accepted five documents this project's own verifier rejects** —
+four of them attestations whose own embedded witness arithmetic refutes the write it
+accompanies. The arm additionally given the JSON Schema agreed on **3** of 26, because it
+obeyed §7's instruction to fail closed on unrecognised values and `Provenance` was published
+nowhere. **The arm that followed the specification more faithfully agreed with us less.** Both
+defects are now fixed and the schema generator refuses to emit a schema omitting any closed
+vocabulary the verifier enforces, but the claim that a third party can verify without trusting
+us was **not true when it was written**, and what makes it truer now is a gate rather than a
+sentence.
+
 What a second implementation independently checks is the attestation's **integrity and
 coherence** -- envelope, version, schema completeness, vocabulary closure,
-subject-to-post-state digest match, reversibility completeness, verdicts, earned strength,
-constraints present, signature, witness coherence. What it does **not** do is re-discharge
+subject-to-post-state digest match, **data identity**, reversibility completeness, verdicts,
+earned strength, constraints present, signature, witness coherence. That is **twelve**, and
+`data_identity` was missing from this list until 2026-09-16 while the paragraph above claimed
+the vectors covered "all 11" -- the same count being wrong in two directions in adjacent
+paragraphs. The population now lives in `dataforge.attestation.NORMATIVE_CHECKS`, and
+`scripts/ci/spec_correspondence.py` refuses when this file, the specification and the vectors
+disagree about it. What it does **not** do is re-discharge
 the proof: deep re-verification re-runs the solver (`certificate.py`) and is Python-only by
 design. So a third party can confirm without trusting us that the attestation is
 well-formed, internally consistent, and describes the artifact it names -- and must still

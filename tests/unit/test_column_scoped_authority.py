@@ -34,6 +34,8 @@ from dataforge.detectors.base import (
     Schema,
 )
 from dataforge.domain.vocabulary import (
+    DISCRIMINATING_COLUMN_TYPES,
+    ENCODABLE_COLUMN_TYPES,
     NON_DISCRIMINATING_COLUMN_TYPES,
     type_discriminates,
 )
@@ -60,23 +62,55 @@ _CSV = (
 
 
 class TestTypeDiscriminates:
-    """The set of non-narrowing type spellings is pinned, because its drift is silent.
+    """The set of authority-conferring type spellings is pinned, because its drift is silent.
 
-    This is a denylist, and the module's own contract warns denylists fail open. Here the
-    enumeration is over types meaning "no constraint", so an unrecognised type name confers
-    authority. That direction is deliberate -- ``decimal`` and ``timestamp`` genuinely narrow, and
-    revoking authority from every schema using an unlisted type would be a regression with no
-    evidence behind it -- but it means an added synonym for "anything" would silently grant
-    authority. Hence the explicit test.
+    **Rewritten 2026-09-16, and the reason is recorded rather than the assertions quietly
+    changed.** This class previously documented the rule as a *denylist* over types meaning "no
+    constraint", and defended failing open on the grounds that an unrecognised spelling is more
+    likely to be `decimal` or `timestamp` -- which genuinely narrow -- than a new synonym for
+    "anything". The premise was true and the conclusion did not follow: narrowing the value space
+    and being CHECKABLE are different properties. No verifier can encode `date`, so declaring it
+    conferred authority nothing could act on, and `test_real_types_narrow` asserted that as
+    intended behaviour for `date`, `datetime` and `bool`.
+
+    The rule is now an allowlist DERIVED from what the verifiers encode
+    (:data:`DISCRIMINATING_COLUMN_TYPES`), so it fails closed. The measured cost of that reversal
+    is zero: `eval/preregistration/per_kind_authority.md` amendment 2 registered P9 before the
+    change and a premise declaring every column `date` writes nothing on both sides of it,
+    because authority plus UNKNOWN never licensed a write.
     """
 
     def test_string_spellings_do_not_narrow(self) -> None:
         for spelling in ("str", "string", "text", "object", "any", ""):
             assert not type_discriminates(spelling), f"{spelling!r} must not confer authority"
 
-    def test_real_types_narrow(self) -> None:
-        for spelling in ("int", "integer", "float", "bool", "date", "datetime", "decimal"):
+    def test_encodable_numeric_types_narrow(self) -> None:
+        """The five spellings that both narrow and can be encoded by both verifiers."""
+        for spelling in ("int", "integer", "float", "decimal", "real"):
             assert type_discriminates(spelling), f"{spelling!r} narrows and must confer authority"
+
+    def test_narrowing_but_unencodable_types_do_not_confer_authority(self) -> None:
+        """The Axis-2 defect, now asserted in the direction that closes it.
+
+        Every spelling here genuinely constrains a value space -- that was never in doubt and is
+        why the old rule admitted them. None can be encoded, so a proposal on such a column
+        returns UNKNOWN from both verifiers. Authority the verifiers cannot act on is the exact
+        shape of the ten-kinds-versus-six divergence closed on 2026-09-14, one axis over.
+        """
+        for spelling in ("date", "datetime", "timestamp", "bool", "boolean", "uuid"):
+            assert not type_discriminates(spelling), (
+                f"{spelling!r} narrows but no verifier can encode it, so it must not confer "
+                "authority -- see dataforge/verifier/direct.py's UNKNOWN branch"
+            )
+
+    def test_an_unrecognised_spelling_confers_nothing(self) -> None:
+        """The direction of failure, reversed deliberately.
+
+        Under the previous denylist these all conferred full authority. An allowlist derived from
+        the encodable set is the only version of this rule that cannot be widened by a typo.
+        """
+        for spelling in ("varchar", "bigint", "numeric", "jsonb", "int64", "flaot"):
+            assert not type_discriminates(spelling)
 
     def test_absent_type_does_not_narrow(self) -> None:
         """The absence of information is not authority."""
@@ -86,12 +120,47 @@ class TestTypeDiscriminates:
         """A schema written by hand should not gain authority from capitalisation or whitespace."""
         for spelling in ("STR", " str ", "String", "TEXT"):
             assert not type_discriminates(spelling)
+        for spelling in ("INT", " int ", "Integer", "DECIMAL"):
+            assert type_discriminates(spelling)
 
-    def test_the_denylist_is_exactly_what_is_documented(self) -> None:
+    def test_the_authoritative_set_is_derived_not_enumerated(self) -> None:
+        """The property that makes this rule maintainable: it is a consequence, not a list.
+
+        Asserting the derivation rather than the membership is what stops the two from diverging.
+        A spelling added to the encodable set becomes authoritative automatically, and one removed
+        loses authority automatically, which is the correspondence the Axis-1 fix established for
+        constraint kinds and this establishes for types.
+        """
+        assert DISCRIMINATING_COLUMN_TYPES == (
+            ENCODABLE_COLUMN_TYPES - NON_DISCRIMINATING_COLUMN_TYPES
+        )
+        assert frozenset({"int", "integer", "float", "decimal", "real"}) == (
+            DISCRIMINATING_COLUMN_TYPES
+        )
+
+    def test_the_non_discriminating_denylist_is_exactly_what_is_documented(self) -> None:
+        """Retained: it still answers which types mean "no constraint", it is just not the rule."""
         assert (
             frozenset({"", "str", "string", "text", "object", "any"})
             == NON_DISCRIMINATING_COLUMN_TYPES
         )
+
+    def test_every_authoritative_type_is_encodable_by_both_verifiers(self) -> None:
+        """The correspondence itself, asserted against the verifiers' own consumed constants.
+
+        ``require_independent_agreement`` needs BOTH verifiers to accept, so the operative set is
+        their intersection. These read the names the verifier modules actually use, so a future
+        divergence -- one verifier gaining a type the other cannot encode -- fails here instead of
+        silently narrowing what can be proven while authority stays wide.
+        """
+        from dataforge.verifier.direct import _FLOAT_TYPES, _INT_TYPES, _STR_TYPES
+
+        direct_encodable = _INT_TYPES | _FLOAT_TYPES | _STR_TYPES
+        assert direct_encodable == ENCODABLE_COLUMN_TYPES
+        for spelling in DISCRIMINATING_COLUMN_TYPES:
+            assert spelling in direct_encodable, (
+                f"{spelling!r} confers authority but the direct verifier cannot encode it"
+            )
 
 
 class TestAuthoritativeColumns:

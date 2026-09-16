@@ -27,6 +27,7 @@ from z3 import (  # type: ignore[import-untyped]
     unsat,
 )
 
+from dataforge.domain.vocabulary import ENCODABLE_FLOAT_TYPES, ENCODABLE_INT_TYPES
 from dataforge.fd_index import DeterminantGroupIndex
 from dataforge.repairers.base import ProposedFix
 from dataforge.table import (
@@ -433,7 +434,7 @@ class SchemaToSMT:
     def _build_column_encoding(self, column: str) -> _ColumnEncoding:
         column_type = (self._schema.column_type(column) or "str").strip().lower()
         function_name = f"col_{column.replace(' ', '_')}"
-        if column_type in {"int", "integer"}:
+        if column_type in ENCODABLE_INT_TYPES:
             return _ColumnEncoding(
                 name=column,
                 column_type=column_type,
@@ -441,7 +442,7 @@ class SchemaToSMT:
                 value_factory=lambda raw: IntVal(int(raw)),
                 python_coercion=int,
             )
-        if column_type in {"float", "decimal", "real"}:
+        if column_type in ENCODABLE_FLOAT_TYPES:
             return _ColumnEncoding(
                 name=column,
                 column_type=column_type,

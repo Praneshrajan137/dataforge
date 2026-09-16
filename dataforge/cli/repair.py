@@ -661,7 +661,12 @@ def repair(
         typer.echo(
             result_json(
                 result,
-                attestation=attest_result(result, source_path=resolved_path, schema_path=schema),
+                attestation=attest_result(
+                    result,
+                    source_path=resolved_path,
+                    schema_path=schema,
+                    mined_authority=trust_mined_constraints,
+                ),
             )
         )
         raise typer.Exit(code=0 if result.fixes else 1)

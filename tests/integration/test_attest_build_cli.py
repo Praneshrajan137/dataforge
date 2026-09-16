@@ -28,8 +28,14 @@ runner = CliRunner()
 
 
 @pytest.fixture
-def repaired(tmp_path: Path) -> tuple[Path, Path]:
-    """Apply a real repair and return (data path, receipt path).
+def repaired(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """Apply a real repair and return (data path, receipt path, schema path).
+
+    The schema path is returned because `attest build` needs it. From 2026-09-16 a receipt
+    that claims authority over columns cannot yield a verifiable certificate unless the
+    premise those columns were derived from is published with it -- `authority_is_entailed`
+    recomputes the claim and there is nothing to recompute from otherwise. Passing
+    `--constraints` is therefore part of the lifecycle this file tests, not an extra.
 
     Uses the shared premised fixture rather than a local literal: its name carries the
     disposition, and it verifies its own premise, so this test cannot silently become a test
@@ -53,16 +59,16 @@ def repaired(tmp_path: Path) -> tuple[Path, Path]:
 
     payload = json.loads(result.stdout)
     assert payload["fixes"], "precondition: a fix must have been applied for this to be a test"
-    return table.csv_path, receipt_path
+    return table.csv_path, receipt_path, table.schema_path
 
 
 class TestBuildProducesAVerifiableCertificate:
     """The lifecycle a consumer actually needs: repair -> build -> verify."""
 
     def test_build_then_verify_round_trip(
-        self, tmp_path: Path, repaired: tuple[Path, Path]
+        self, tmp_path: Path, repaired: tuple[Path, Path, Path]
     ) -> None:
-        data_path, receipt_path = repaired
+        data_path, receipt_path, schema_path = repaired
         attestation = tmp_path / "attestation.json"
 
         built = runner.invoke(
@@ -71,6 +77,8 @@ class TestBuildProducesAVerifiableCertificate:
                 "attest",
                 "build",
                 str(receipt_path),
+                "--constraints",
+                str(schema_path),
                 "--subject-name",
                 data_path.name,
                 "--data",
@@ -90,9 +98,9 @@ class TestBuildProducesAVerifiableCertificate:
         assert report["ok"] is True
 
     def test_built_attestation_is_a_wellformed_statement(
-        self, tmp_path: Path, repaired: tuple[Path, Path]
+        self, tmp_path: Path, repaired: tuple[Path, Path, Path]
     ) -> None:
-        data_path, receipt_path = repaired
+        data_path, receipt_path, schema_path = repaired
         attestation = tmp_path / "a.json"
         runner.invoke(
             app,
@@ -100,6 +108,8 @@ class TestBuildProducesAVerifiableCertificate:
                 "attest",
                 "build",
                 str(receipt_path),
+                "--constraints",
+                str(schema_path),
                 "--subject-name",
                 data_path.name,
                 "--data",
@@ -118,10 +128,10 @@ class TestBuildProducesAVerifiableCertificate:
         assert predicate["revert_command"]
 
     def test_accepts_a_bare_receipt_as_well_as_a_full_result(
-        self, tmp_path: Path, repaired: tuple[Path, Path]
+        self, tmp_path: Path, repaired: tuple[Path, Path, Path]
     ) -> None:
         """A user should not have to know which shape they are holding."""
-        data_path, receipt_path = repaired
+        data_path, receipt_path, schema_path = repaired
         bare = tmp_path / "bare.json"
         bare.write_text(
             json.dumps(json.loads(receipt_path.read_text(encoding="utf-8"))["receipt"]),
@@ -133,6 +143,8 @@ class TestBuildProducesAVerifiableCertificate:
                 "attest",
                 "build",
                 str(bare),
+                "--constraints",
+                str(schema_path),
                 "--subject-name",
                 data_path.name,
                 "--data",
@@ -147,10 +159,10 @@ class TestFailClosed:
     """What build refuses, which is the point of it."""
 
     def test_refuses_to_emit_when_the_data_does_not_match(
-        self, tmp_path: Path, repaired: tuple[Path, Path]
+        self, tmp_path: Path, repaired: tuple[Path, Path, Path]
     ) -> None:
         """The self-verification must actually gate the write, not merely run."""
-        data_path, receipt_path = repaired
+        data_path, receipt_path, schema_path = repaired
         wrong = tmp_path / "wrong.csv"
         wrong.write_text("id,amount\n1,999\n", encoding="utf-8")
         output = tmp_path / "should_not_exist.json"
@@ -161,6 +173,8 @@ class TestFailClosed:
                 "attest",
                 "build",
                 str(receipt_path),
+                "--constraints",
+                str(schema_path),
                 "--subject-name",
                 data_path.name,
                 "--data",
@@ -188,26 +202,39 @@ class TestHonestReporting:
     """Absences are named, never folded into success."""
 
     def test_missing_data_flag_is_reported_as_unchecked(
-        self, tmp_path: Path, repaired: tuple[Path, Path]
+        self, tmp_path: Path, repaired: tuple[Path, Path, Path]
     ) -> None:
         """Without --data the digest claim is built but never checked."""
-        data_path, receipt_path = repaired
-        built = runner.invoke(
-            app, ["attest", "build", str(receipt_path), "--subject-name", data_path.name]
-        )
-        assert built.exit_code == 0, built.output
-        assert "not fully checked" in built.output
-        assert "--data" in built.output
-
-    def test_unsigned_output_says_so(self, tmp_path: Path, repaired: tuple[Path, Path]) -> None:
-        """An unsigned certificate is reported `unsigned`, never `verified`."""
-        data_path, receipt_path = repaired
+        data_path, receipt_path, schema_path = repaired
         built = runner.invoke(
             app,
             [
                 "attest",
                 "build",
                 str(receipt_path),
+                "--constraints",
+                str(schema_path),
+                "--subject-name",
+                data_path.name,
+            ],
+        )
+        assert built.exit_code == 0, built.output
+        assert "not fully checked" in built.output
+        assert "--data" in built.output
+
+    def test_unsigned_output_says_so(
+        self, tmp_path: Path, repaired: tuple[Path, Path, Path]
+    ) -> None:
+        """An unsigned certificate is reported `unsigned`, never `verified`."""
+        data_path, receipt_path, schema_path = repaired
+        built = runner.invoke(
+            app,
+            [
+                "attest",
+                "build",
+                str(receipt_path),
+                "--constraints",
+                str(schema_path),
                 "--subject-name",
                 data_path.name,
                 "--data",
@@ -222,7 +249,7 @@ class TestSigning:
     """DSSE signing, when a key is supplied."""
 
     def test_signed_output_is_a_dsse_envelope_that_verifies(
-        self, tmp_path: Path, repaired: tuple[Path, Path]
+        self, tmp_path: Path, repaired: tuple[Path, Path, Path]
     ) -> None:
         cryptography = pytest.importorskip("cryptography")
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -235,7 +262,7 @@ class TestSigning:
         pub_path = tmp_path / "key.pub"
         pub_path.write_bytes(private.public_key().public_bytes_raw())
 
-        data_path, receipt_path = repaired
+        data_path, receipt_path, schema_path = repaired
         attestation = tmp_path / "signed.json"
         built = runner.invoke(
             app,
@@ -243,6 +270,8 @@ class TestSigning:
                 "attest",
                 "build",
                 str(receipt_path),
+                "--constraints",
+                str(schema_path),
                 "--subject-name",
                 data_path.name,
                 "--data",

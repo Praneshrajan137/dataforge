@@ -20,9 +20,13 @@ from typing import Any
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from dataforge.attestation import verify_attestation
+from dataforge.attestation import NORMATIVE_CHECKS, verify_attestation
 
 VECTORS_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "attestation" / "vectors.json"
+
+#: Normative checks that cannot have a FAILURE vector, each with the reason. Enumerate the
+#: artifact, name the remainder, refuse on anything unnameable -- PRODUCT.md section 1.3.
+NO_FAILURE_VECTOR_EXEMPT: dict[str, str] = {}
 
 
 def _load() -> dict[str, Any]:
@@ -34,10 +38,13 @@ PUBLIC_KEY = bytes.fromhex(VECTORS["test_public_key_hex"])
 
 
 def test_the_vector_file_is_a_real_suite() -> None:
-    """Guard against a vacuous suite.
+    """Guard against a vacuous suite, over a DERIVED population.
 
-    A conformance file that drifted down to two happy-path vectors would still pass every
-    parametrized test below while proving nothing. Pin the shape instead.
+    Until 2026-09-16 the loop below iterated a hardcoded ten-name tuple while the verifier ran
+    twelve checks, under a comment claiming it covered "every distinct normative check". It could
+    not see that `data_identity` had no vector at all, nor that `witness_is_coherent` had been
+    added. A lower-bound assertion cannot see a missing member, so the population is now taken
+    from `NORMATIVE_CHECKS` and every member must be exercised or exempt with a reason.
     """
     vectors = VECTORS["vectors"]
     assert len(vectors) >= 15, f"only {len(vectors)} vectors; the suite has lost coverage"
@@ -45,21 +52,18 @@ def test_the_vector_file_is_a_real_suite() -> None:
     rejected = [name for name, case in vectors.items() if not case["expect_ok"]]
     assert len(accepted) >= 3
     assert len(rejected) >= 10
-    # Every distinct normative check that can fail should be exercised by some vector.
+
     exercised = {check for case in vectors.values() for check in case["expect_failures"]}
-    for required in (
-        "envelope_recognised",
-        "version_recognised",
-        "schema_complete",
-        "vocabulary_closed",
-        "subject_matches_post_state",
-        "reversibility_complete",
-        "verdicts_accepting",
-        "strength_is_earned",
-        "constraints_present",
-        "signature",
-    ):
-        assert required in exercised, f"no vector exercises a {required} failure"
+    unexercised = sorted(set(NORMATIVE_CHECKS) - exercised - set(NO_FAILURE_VECTOR_EXEMPT))
+    assert not unexercised, (
+        f"no vector exercises a failure of {unexercised}. Add one, or add it to "
+        "NO_FAILURE_VECTOR_EXEMPT with the reason it cannot have one."
+    )
+
+    # The exemption list must not outlive its reason: a name listed there but absent from the
+    # check population is a stale exemption quietly widening what goes unexercised.
+    stale = sorted(set(NO_FAILURE_VECTOR_EXEMPT) - set(NORMATIVE_CHECKS))
+    assert not stale, f"exempt names that are no longer normative checks: {stale}"
 
 
 @pytest.mark.parametrize("name", sorted(VECTORS["vectors"]))
@@ -67,8 +71,10 @@ def test_vector(name: str) -> None:
     case = VECTORS["vectors"][name]
     document = case["document"]
     signed = "payload" in document
+    data_b64 = case.get("data_b64")
     result = verify_attestation(
         document,
+        data_bytes=base64.b64decode(data_b64) if data_b64 else None,
         public_key_raw=PUBLIC_KEY if signed else None,
     )
 

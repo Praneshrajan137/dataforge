@@ -1,0 +1,1340 @@
+{
+  "schema": "dataforge_specification_sufficiency_v1",
+  "note": "Clean-room conformance measurement. The arms are the instrument; specs/SPEC_repair_attestation.md is the subject. Pre-registered in eval/preregistration/specification_sufficiency.md.",
+  "vectors_total": 30,
+  "arms": {
+    "armA": {
+      "arm": "armA",
+      "inputs": "specs/SPEC_repair_attestation.md",
+      "vectors_total": 30,
+      "vectors_agreeing": 21,
+      "vectors_disagreeing": 9,
+      "agreement_rate": 0.7,
+      "baseline_vectors_total": 26,
+      "baseline_vectors_agreeing": 17,
+      "baseline_agreement_rate": 0.6538,
+      "checks_reported_count": 11,
+      "checks_reported": [
+        "constraints_present",
+        "data_identity",
+        "envelope_recognised",
+        "reversibility_complete",
+        "schema_complete",
+        "signature",
+        "strength_is_earned",
+        "subject_matches_post_state",
+        "verdicts_accepting",
+        "version_recognised",
+        "vocabulary_closed"
+      ],
+      "outcomes": [
+        {
+          "vector": "accept-coherent-entailment-witness",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "accept-multiple-subjects-naming-the-same-artifact",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-applied-without-revert-command",
+          "expect_ok": false,
+          "expect_failures": [
+            "reversibility_complete"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "reversibility_complete"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-data-identity-mismatched-bytes",
+          "expect_ok": false,
+          "expect_failures": [
+            "data_identity"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "data_identity"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-entity-consensus-claimed-proven",
+          "expect_ok": false,
+          "expect_failures": [
+            "strength_is_earned"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['strength_is_earned']; got ok=False failures=['constraints_present', 'strength_is_earned']"
+        },
+        {
+          "vector": "reject-external-off-authority",
+          "expect_ok": false,
+          "expect_failures": [
+            "strength_is_earned"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "strength_is_earned"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-extra-subject-naming-a-different-artifact",
+          "expect_ok": false,
+          "expect_failures": [
+            "subject_matches_post_state"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "subject_matches_post_state"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-foreign-subject-listed-first",
+          "expect_ok": false,
+          "expect_failures": [
+            "subject_matches_post_state"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "subject_matches_post_state"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-honest-downgrade-must-not-be-upgraded",
+          "expect_ok": false,
+          "expect_failures": [
+            "strength_is_earned"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "strength_is_earned"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-missing-tool-version",
+          "expect_ok": false,
+          "expect_failures": [
+            "schema_complete"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "schema_complete"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-missing-verification-strength",
+          "expect_ok": false,
+          "expect_failures": [
+            "vocabulary_closed"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "schema_complete",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['vocabulary_closed']; got ok=False failures=['schema_complete', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-schema-proven-without-embedded-constraints",
+          "expect_ok": false,
+          "expect_failures": [
+            "constraints_present"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-signature-from-a-different-key",
+          "expect_ok": false,
+          "expect_failures": [
+            "signature"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "signature"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-subject-digest-mismatch",
+          "expect_ok": false,
+          "expect_failures": [
+            "subject_matches_post_state"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "subject_matches_post_state"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-tampered-signed-payload",
+          "expect_ok": false,
+          "expect_failures": [
+            "signature"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "signature"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-unknown-provenance",
+          "expect_ok": false,
+          "expect_failures": [
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['strength_is_earned', 'vocabulary_closed']; got ok=False failures=['vocabulary_closed']"
+        },
+        {
+          "vector": "reject-unknown-review-reason",
+          "expect_ok": false,
+          "expect_failures": [
+            "vocabulary_closed"
+          ],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "WRONG_VERDICT_ACCEPTED",
+          "detail": "expected ok=False failures=['vocabulary_closed']; got ok=True failures=[]"
+        },
+        {
+          "vector": "reject-unrecognised-predicate-type",
+          "expect_ok": false,
+          "expect_failures": [
+            "envelope_recognised"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "envelope_recognised"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-unrecognised-statement-type",
+          "expect_ok": false,
+          "expect_failures": [
+            "envelope_recognised"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "envelope_recognised"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-unrecognised-version",
+          "expect_ok": false,
+          "expect_failures": [
+            "version_recognised"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "version_recognised"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-verifier-rejected",
+          "expect_ok": false,
+          "expect_failures": [
+            "verdicts_accepting"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "verdicts_accepting"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-witness-whose-support-exceeds-its-group",
+          "expect_ok": false,
+          "expect_failures": [
+            "witness_is_coherent"
+          ],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "WRONG_VERDICT_ACCEPTED",
+          "detail": "expected ok=False failures=['witness_is_coherent']; got ok=True failures=[]"
+        },
+        {
+          "vector": "reject-witness-whose-written-value-is-absent-from-its-group",
+          "expect_ok": false,
+          "expect_failures": [
+            "witness_is_coherent"
+          ],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "WRONG_VERDICT_ACCEPTED",
+          "detail": "expected ok=False failures=['witness_is_coherent']; got ok=True failures=[]"
+        },
+        {
+          "vector": "reject-witness-with-undeclared-truncation",
+          "expect_ok": false,
+          "expect_failures": [
+            "witness_is_coherent"
+          ],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "WRONG_VERDICT_ACCEPTED",
+          "detail": "expected ok=False failures=['witness_is_coherent']; got ok=True failures=[]"
+        },
+        {
+          "vector": "reject-witness-without-a-strict-majority",
+          "expect_ok": false,
+          "expect_failures": [
+            "witness_is_coherent"
+          ],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "WRONG_VERDICT_ACCEPTED",
+          "detail": "expected ok=False failures=['witness_is_coherent']; got ok=True failures=[]"
+        },
+        {
+          "vector": "valid-data-identity-with-matching-bytes",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "valid-deterministic-applied",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "valid-dry-run",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": false,
+          "actual_failures": [
+            "verdicts_accepting"
+          ],
+          "verdict": "WRONG_VERDICT_REJECTED",
+          "detail": "expected ok=True failures=[]; got ok=False failures=['verdicts_accepting']"
+        },
+        {
+          "vector": "valid-external-on-covered-column",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "valid-signed",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        }
+      ]
+    },
+    "armB": {
+      "arm": "armB",
+      "inputs": "specs/SPEC_repair_attestation.md + specs/repair_attestation.schema.json",
+      "vectors_total": 30,
+      "vectors_agreeing": 3,
+      "vectors_disagreeing": 27,
+      "agreement_rate": 0.1,
+      "baseline_vectors_total": 26,
+      "baseline_vectors_agreeing": 3,
+      "baseline_agreement_rate": 0.1154,
+      "checks_reported_count": 12,
+      "checks_reported": [
+        "constraints_present",
+        "data_identity",
+        "envelope_recognised",
+        "reversibility_complete",
+        "schema_complete",
+        "signature",
+        "strength_is_earned",
+        "subject_matches_post_state",
+        "verdicts_accepting",
+        "version_recognised",
+        "vocabulary_closed",
+        "witness_coherent"
+      ],
+      "outcomes": [
+        {
+          "vector": "accept-coherent-entailment-witness",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_VERDICT_REJECTED",
+          "detail": "expected ok=True failures=[]; got ok=False failures=['constraints_present', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "accept-multiple-subjects-naming-the-same-artifact",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_VERDICT_REJECTED",
+          "detail": "expected ok=True failures=[]; got ok=False failures=['constraints_present', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-applied-without-revert-command",
+          "expect_ok": false,
+          "expect_failures": [
+            "reversibility_complete"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "reversibility_complete",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['reversibility_complete']; got ok=False failures=['constraints_present', 'reversibility_complete', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-data-identity-mismatched-bytes",
+          "expect_ok": false,
+          "expect_failures": [
+            "data_identity"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "data_identity",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['data_identity']; got ok=False failures=['constraints_present', 'data_identity', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-entity-consensus-claimed-proven",
+          "expect_ok": false,
+          "expect_failures": [
+            "strength_is_earned"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['strength_is_earned']; got ok=False failures=['constraints_present', 'strength_is_earned']"
+        },
+        {
+          "vector": "reject-external-off-authority",
+          "expect_ok": false,
+          "expect_failures": [
+            "strength_is_earned"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "strength_is_earned"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-extra-subject-naming-a-different-artifact",
+          "expect_ok": false,
+          "expect_failures": [
+            "subject_matches_post_state"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "subject_matches_post_state",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['subject_matches_post_state']; got ok=False failures=['constraints_present', 'strength_is_earned', 'subject_matches_post_state', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-foreign-subject-listed-first",
+          "expect_ok": false,
+          "expect_failures": [
+            "subject_matches_post_state"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "subject_matches_post_state",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['subject_matches_post_state']; got ok=False failures=['constraints_present', 'strength_is_earned', 'subject_matches_post_state', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-honest-downgrade-must-not-be-upgraded",
+          "expect_ok": false,
+          "expect_failures": [
+            "strength_is_earned"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['strength_is_earned']; got ok=False failures=['strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-missing-tool-version",
+          "expect_ok": false,
+          "expect_failures": [
+            "schema_complete"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "schema_complete",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['schema_complete']; got ok=False failures=['constraints_present', 'schema_complete', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-missing-verification-strength",
+          "expect_ok": false,
+          "expect_failures": [
+            "vocabulary_closed"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "schema_complete",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['vocabulary_closed']; got ok=False failures=['schema_complete', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-schema-proven-without-embedded-constraints",
+          "expect_ok": false,
+          "expect_failures": [
+            "constraints_present"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-signature-from-a-different-key",
+          "expect_ok": false,
+          "expect_failures": [
+            "signature"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "signature",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['signature']; got ok=False failures=['constraints_present', 'signature', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-subject-digest-mismatch",
+          "expect_ok": false,
+          "expect_failures": [
+            "subject_matches_post_state"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "subject_matches_post_state",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['subject_matches_post_state']; got ok=False failures=['constraints_present', 'strength_is_earned', 'subject_matches_post_state', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-tampered-signed-payload",
+          "expect_ok": false,
+          "expect_failures": [
+            "signature"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "schema_complete",
+            "signature",
+            "strength_is_earned",
+            "subject_matches_post_state",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['signature']; got ok=False failures=['constraints_present', 'schema_complete', 'signature', 'strength_is_earned', 'subject_matches_post_state', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-unknown-provenance",
+          "expect_ok": false,
+          "expect_failures": [
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['strength_is_earned', 'vocabulary_closed']; got ok=False failures=['constraints_present', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-unknown-review-reason",
+          "expect_ok": false,
+          "expect_failures": [
+            "vocabulary_closed"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['vocabulary_closed']; got ok=False failures=['constraints_present', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-unrecognised-predicate-type",
+          "expect_ok": false,
+          "expect_failures": [
+            "envelope_recognised"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "envelope_recognised",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['envelope_recognised']; got ok=False failures=['constraints_present', 'envelope_recognised', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-unrecognised-statement-type",
+          "expect_ok": false,
+          "expect_failures": [
+            "envelope_recognised"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "envelope_recognised",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['envelope_recognised']; got ok=False failures=['constraints_present', 'envelope_recognised', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-unrecognised-version",
+          "expect_ok": false,
+          "expect_failures": [
+            "version_recognised"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "version_recognised",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['version_recognised']; got ok=False failures=['constraints_present', 'strength_is_earned', 'version_recognised', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-verifier-rejected",
+          "expect_ok": false,
+          "expect_failures": [
+            "verdicts_accepting"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "verdicts_accepting",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['verdicts_accepting']; got ok=False failures=['constraints_present', 'strength_is_earned', 'verdicts_accepting', 'vocabulary_closed']"
+        },
+        {
+          "vector": "reject-witness-whose-support-exceeds-its-group",
+          "expect_ok": false,
+          "expect_failures": [
+            "witness_is_coherent"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "vocabulary_closed",
+            "witness_coherent"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['witness_is_coherent']; got ok=False failures=['constraints_present', 'strength_is_earned', 'vocabulary_closed', 'witness_coherent']"
+        },
+        {
+          "vector": "reject-witness-whose-written-value-is-absent-from-its-group",
+          "expect_ok": false,
+          "expect_failures": [
+            "witness_is_coherent"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "vocabulary_closed",
+            "witness_coherent"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['witness_is_coherent']; got ok=False failures=['constraints_present', 'strength_is_earned', 'vocabulary_closed', 'witness_coherent']"
+        },
+        {
+          "vector": "reject-witness-with-undeclared-truncation",
+          "expect_ok": false,
+          "expect_failures": [
+            "witness_is_coherent"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "vocabulary_closed",
+            "witness_coherent"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['witness_is_coherent']; got ok=False failures=['constraints_present', 'strength_is_earned', 'vocabulary_closed', 'witness_coherent']"
+        },
+        {
+          "vector": "reject-witness-without-a-strict-majority",
+          "expect_ok": false,
+          "expect_failures": [
+            "witness_is_coherent"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "vocabulary_closed",
+            "witness_coherent"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['witness_is_coherent']; got ok=False failures=['constraints_present', 'strength_is_earned', 'vocabulary_closed', 'witness_coherent']"
+        },
+        {
+          "vector": "valid-data-identity-with-matching-bytes",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_VERDICT_REJECTED",
+          "detail": "expected ok=True failures=[]; got ok=False failures=['constraints_present', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "valid-deterministic-applied",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_VERDICT_REJECTED",
+          "detail": "expected ok=True failures=[]; got ok=False failures=['constraints_present', 'strength_is_earned', 'vocabulary_closed']"
+        },
+        {
+          "vector": "valid-dry-run",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": false,
+          "actual_failures": [
+            "verdicts_accepting"
+          ],
+          "verdict": "WRONG_VERDICT_REJECTED",
+          "detail": "expected ok=True failures=[]; got ok=False failures=['verdicts_accepting']"
+        },
+        {
+          "vector": "valid-external-on-covered-column",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "valid-signed",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present",
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "WRONG_VERDICT_REJECTED",
+          "detail": "expected ok=True failures=[]; got ok=False failures=['constraints_present', 'strength_is_earned', 'vocabulary_closed']"
+        }
+      ]
+    },
+    "armC": {
+      "arm": "armC",
+      "inputs": "specs/SPEC_repair_attestation.md (amended)",
+      "vectors_total": 30,
+      "vectors_agreeing": 29,
+      "vectors_disagreeing": 1,
+      "agreement_rate": 0.9667,
+      "baseline_vectors_total": 26,
+      "baseline_vectors_agreeing": 25,
+      "baseline_agreement_rate": 0.9615,
+      "checks_reported_count": 12,
+      "checks_reported": [
+        "constraints_present",
+        "data_identity",
+        "envelope_recognised",
+        "reversibility_complete",
+        "schema_complete",
+        "signature",
+        "strength_is_earned",
+        "subject_matches_post_state",
+        "verdicts_accepting",
+        "version_recognised",
+        "vocabulary_closed",
+        "witness_is_coherent"
+      ],
+      "outcomes": [
+        {
+          "vector": "accept-coherent-entailment-witness",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "accept-multiple-subjects-naming-the-same-artifact",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-applied-without-revert-command",
+          "expect_ok": false,
+          "expect_failures": [
+            "reversibility_complete"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "reversibility_complete"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-data-identity-mismatched-bytes",
+          "expect_ok": false,
+          "expect_failures": [
+            "data_identity"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "data_identity"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-entity-consensus-claimed-proven",
+          "expect_ok": false,
+          "expect_failures": [
+            "strength_is_earned"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "strength_is_earned"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-external-off-authority",
+          "expect_ok": false,
+          "expect_failures": [
+            "strength_is_earned"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "strength_is_earned"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-extra-subject-naming-a-different-artifact",
+          "expect_ok": false,
+          "expect_failures": [
+            "subject_matches_post_state"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "subject_matches_post_state"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-foreign-subject-listed-first",
+          "expect_ok": false,
+          "expect_failures": [
+            "subject_matches_post_state"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "subject_matches_post_state"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-honest-downgrade-must-not-be-upgraded",
+          "expect_ok": false,
+          "expect_failures": [
+            "strength_is_earned"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "strength_is_earned"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-missing-tool-version",
+          "expect_ok": false,
+          "expect_failures": [
+            "schema_complete"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "schema_complete"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-missing-verification-strength",
+          "expect_ok": false,
+          "expect_failures": [
+            "vocabulary_closed"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "vocabulary_closed"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-schema-proven-without-embedded-constraints",
+          "expect_ok": false,
+          "expect_failures": [
+            "constraints_present"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "constraints_present"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-signature-from-a-different-key",
+          "expect_ok": false,
+          "expect_failures": [
+            "signature"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "signature"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-subject-digest-mismatch",
+          "expect_ok": false,
+          "expect_failures": [
+            "subject_matches_post_state"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "subject_matches_post_state"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-tampered-signed-payload",
+          "expect_ok": false,
+          "expect_failures": [
+            "signature"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "signature",
+            "subject_matches_post_state"
+          ],
+          "verdict": "WRONG_CHECKS",
+          "detail": "expected ok=False failures=['signature']; got ok=False failures=['signature', 'subject_matches_post_state']"
+        },
+        {
+          "vector": "reject-unknown-provenance",
+          "expect_ok": false,
+          "expect_failures": [
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "strength_is_earned",
+            "vocabulary_closed"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-unknown-review-reason",
+          "expect_ok": false,
+          "expect_failures": [
+            "vocabulary_closed"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "vocabulary_closed"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-unrecognised-predicate-type",
+          "expect_ok": false,
+          "expect_failures": [
+            "envelope_recognised"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "envelope_recognised"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-unrecognised-statement-type",
+          "expect_ok": false,
+          "expect_failures": [
+            "envelope_recognised"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "envelope_recognised"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-unrecognised-version",
+          "expect_ok": false,
+          "expect_failures": [
+            "version_recognised"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "version_recognised"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-verifier-rejected",
+          "expect_ok": false,
+          "expect_failures": [
+            "verdicts_accepting"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "verdicts_accepting"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-witness-whose-support-exceeds-its-group",
+          "expect_ok": false,
+          "expect_failures": [
+            "witness_is_coherent"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "witness_is_coherent"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-witness-whose-written-value-is-absent-from-its-group",
+          "expect_ok": false,
+          "expect_failures": [
+            "witness_is_coherent"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "witness_is_coherent"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-witness-with-undeclared-truncation",
+          "expect_ok": false,
+          "expect_failures": [
+            "witness_is_coherent"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "witness_is_coherent"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "reject-witness-without-a-strict-majority",
+          "expect_ok": false,
+          "expect_failures": [
+            "witness_is_coherent"
+          ],
+          "actual_ok": false,
+          "actual_failures": [
+            "witness_is_coherent"
+          ],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "valid-data-identity-with-matching-bytes",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "valid-deterministic-applied",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "valid-dry-run",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "valid-external-on-covered-column",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        },
+        {
+          "vector": "valid-signed",
+          "expect_ok": true,
+          "expect_failures": [],
+          "actual_ok": true,
+          "actual_failures": [],
+          "verdict": "AGREE",
+          "detail": ""
+        }
+      ]
+    }
+  },
+  "cross_arm": {
+    "comparable": true,
+    "pairs": {
+      "armA_vs_armB": {
+        "vectors_compared": 30,
+        "vectors_differing": 24,
+        "differing": [
+          "accept-coherent-entailment-witness",
+          "accept-multiple-subjects-naming-the-same-artifact",
+          "reject-applied-without-revert-command",
+          "reject-data-identity-mismatched-bytes",
+          "reject-extra-subject-naming-a-different-artifact",
+          "reject-foreign-subject-listed-first",
+          "reject-honest-downgrade-must-not-be-upgraded",
+          "reject-missing-tool-version",
+          "reject-signature-from-a-different-key",
+          "reject-subject-digest-mismatch",
+          "reject-tampered-signed-payload",
+          "reject-unknown-provenance",
+          "reject-unknown-review-reason",
+          "reject-unrecognised-predicate-type",
+          "reject-unrecognised-statement-type",
+          "reject-unrecognised-version",
+          "reject-verifier-rejected",
+          "reject-witness-whose-support-exceeds-its-group",
+          "reject-witness-whose-written-value-is-absent-from-its-group",
+          "reject-witness-with-undeclared-truncation",
+          "reject-witness-without-a-strict-majority",
+          "valid-data-identity-with-matching-bytes",
+          "valid-deterministic-applied",
+          "valid-signed"
+        ]
+      },
+      "armA_vs_armC": {
+        "vectors_compared": 30,
+        "vectors_differing": 10,
+        "differing": [
+          "reject-entity-consensus-claimed-proven",
+          "reject-missing-verification-strength",
+          "reject-tampered-signed-payload",
+          "reject-unknown-provenance",
+          "reject-unknown-review-reason",
+          "reject-witness-whose-support-exceeds-its-group",
+          "reject-witness-whose-written-value-is-absent-from-its-group",
+          "reject-witness-with-undeclared-truncation",
+          "reject-witness-without-a-strict-majority",
+          "valid-dry-run"
+        ]
+      },
+      "armB_vs_armC": {
+        "vectors_compared": 30,
+        "vectors_differing": 27,
+        "differing": [
+          "accept-coherent-entailment-witness",
+          "accept-multiple-subjects-naming-the-same-artifact",
+          "reject-applied-without-revert-command",
+          "reject-data-identity-mismatched-bytes",
+          "reject-entity-consensus-claimed-proven",
+          "reject-extra-subject-naming-a-different-artifact",
+          "reject-foreign-subject-listed-first",
+          "reject-honest-downgrade-must-not-be-upgraded",
+          "reject-missing-tool-version",
+          "reject-missing-verification-strength",
+          "reject-signature-from-a-different-key",
+          "reject-subject-digest-mismatch",
+          "reject-tampered-signed-payload",
+          "reject-unknown-provenance",
+          "reject-unknown-review-reason",
+          "reject-unrecognised-predicate-type",
+          "reject-unrecognised-statement-type",
+          "reject-unrecognised-version",
+          "reject-verifier-rejected",
+          "reject-witness-whose-support-exceeds-its-group",
+          "reject-witness-whose-written-value-is-absent-from-its-group",
+          "reject-witness-with-undeclared-truncation",
+          "reject-witness-without-a-strict-majority",
+          "valid-data-identity-with-matching-bytes",
+          "valid-deterministic-applied",
+          "valid-dry-run",
+          "valid-signed"
+        ]
+      }
+    }
+  }
+}
