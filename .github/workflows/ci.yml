@@ -190,7 +190,17 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install --upgrade pip
+      # The same partial-install defect fixed in gate-population, in the job next door. A
+      # `.[dev]`-only install cannot import fastapi, so tests/integration/test_openenv_spec.py,
+      # tests/integration/test_playground_smoke.py and tests/unit/test_playground_deploy_contract.py
+      # fail at COLLECTION -- and this harness reads its baseline by collecting, so it reported
+      # "baseline: pytest exit 2" and refused to score. That refusal is correct: a mutation score
+      # against a baseline that never ran measures nothing. The job is fixed rather than the harness
+      # relaxed, matching canonical-backend-gate's four install steps.
       - run: pip install -e ".[dev]"
+      - run: pip install -e "./dataforge-mcp[dev]"
+      - run: pip install -r docs/requirements.txt
+      - run: pip install -r playground/api/requirements.txt
       - name: Auto-apply mutants MUST all die
         run: make mutation-gate
 
@@ -253,7 +263,15 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install --upgrade pip
+      # Same partial-install defect as mutation-gate above. Without fastapi three test modules fail
+      # at collection, so `make coverage-gate` exited 2 on "Interrupted: 3 errors during collection"
+      # -- the floor was never measured at all, and the job's failure said nothing about coverage.
+      # A gate that cannot run is worse than a low number, because the number at least tells you
+      # something.
       - run: pip install -e ".[dev]"
+      - run: pip install -e "./dataforge-mcp[dev]"
+      - run: pip install -r docs/requirements.txt
+      - run: pip install -r playground/api/requirements.txt
       - name: Coverage floor
         run: make coverage-gate
 

@@ -251,7 +251,18 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         name="M15-str-declaration-confers-authority-again",
         target="dataforge/domain/vocabulary.py",
-        old="    return declared_type.strip().lower() not in NON_DISCRIMINATING_COLUMN_TYPES",
+        # Retargeted 2026-09-16, for the reason M7 above records. `type_discriminates` was a
+        # DENYLIST -- `not in NON_DISCRIMINATING_COLUMN_TYPES` -- and is now an allowlist DERIVED
+        # from what the verifiers can encode, so the old anchor text no longer exists. The harness
+        # reported NOT_APPLIED rather than scoring a stale anchor, which is what the green-baseline
+        # work was added for; a mutant whose anchor has drifted is not a passing mutant.
+        #
+        # The mutant's intent is unchanged and the new form is strictly closer to it: returning True
+        # makes EVERY spelling authoritative, which is the defect in its most general shape -- `str`
+        # confers authority, and so do `date`, `bool` and every unrecognised spelling that no
+        # verifier can encode. The 2026-09-16 change closed the second and third of those; this
+        # mutant is what stops all of them coming back.
+        old="    return declared_type.strip().lower() in DISCRIMINATING_COLUMN_TYPES",
         new="    return True",
         tests=(
             "tests/adversarial/test_corpus_gate.py",
@@ -285,8 +296,13 @@ MUTANTS: tuple[Mutant, ...] = (
             "29-36 had specified exactly six conditions all along. Measured in "
             "eval/results/trust_ledger_adversarial.json: adding ONE relationship field to the "
             "permissive premise, changing nothing else, took it from 0 writes to 11 and corrupted "
-            "10 of 14, reproducing the pre-2026-08-25 str figure exactly, and one applied "
-            "injection took the table from 6 rows to 7. The realistic path in was dbt rather than "
+            "10 of 14, reproducing the pre-2026-08-25 str figure exactly. (An earlier version of "
+            "this note added that one applied injection took the table from 6 rows to 7. That "
+            "clause is WITHDRAWN 2026-09-16: it reported a physical line count from an assertion "
+            "that called splitlines() the table shape, and a quoted CSV field may legally contain "
+            "a newline. Measured with a CSV reader the parsed row count and every per-row field "
+            "count are unchanged, so it was a value corruption and not a structural one.) The "
+            "realistic path in was dbt rather than "
             "an adversary: integrations/dbt.py maps dbt's built-in relationships test onto the "
             "field. N-version diversity could not catch it, because both verifiers are written "
             "from the same Schema and omit the same kinds, so both ACCEPTED, they agreed, and "
