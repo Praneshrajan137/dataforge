@@ -31,7 +31,7 @@
               "type": "array"
             },
             "constraints": {
-              "description": "The constraints embedded IN FULL, not by reference. A digest and an id list are dangling pointers: a verifier must be able to read what a fix was proven against without fetching anything, which is what makes offline verification possible."
+              "description": "The constraints embedded IN FULL, not by reference. A digest and an id list are dangling pointers: a verifier must be able to read what a fix was proven against without fetching anything, which is what makes offline verification possible. ADVISORY as of 2026-09-16: this is the schema file as authored, for a human to read, and `constraints_present` tests only that it is non-empty. The field a verifier recomputes authority from is `premise`."
             },
             "constraints_digest": {
               "oneOf": [
@@ -44,6 +44,211 @@
                   },
                   "required": [
                     "sha256"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "premise": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "The declared schema authority was computed from, in the canonical premise format of SPEC section 6.4.1. This is what `authority_is_entailed` recomputes `authoritative_columns` from, so the authority claim is arithmetic a reader can repeat rather than an assertion a reader must accept. `additionalProperties: false` is load-bearing at every level: a premise carrying a constraint this format cannot express would confer authority in-process while understating it here.",
+                  "properties": {
+                    "accepted_values": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "column": {
+                            "type": "string"
+                          },
+                          "values": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "minItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "column",
+                          "values"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "aggregate_dependencies": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "aggregate": {
+                            "enum": [
+                              "avg",
+                              "sum"
+                            ],
+                            "type": "string"
+                          },
+                          "group_by": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "source_column": {
+                            "type": "string"
+                          },
+                          "target_column": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "source_column",
+                          "target_column",
+                          "aggregate"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "columns": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    "domain_bounds": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "column": {
+                            "type": "string"
+                          },
+                          "inclusive_max": {
+                            "type": "boolean"
+                          },
+                          "inclusive_min": {
+                            "type": "boolean"
+                          },
+                          "max_value": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "min_value": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "column"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "functional_dependencies": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "dependent": {
+                            "type": "string"
+                          },
+                          "determinant": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "minItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "determinant",
+                          "dependent"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "not_null_columns": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "pii_columns": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "premise_format": {
+                      "const": "dataforge.premise/v1",
+                      "type": "string"
+                    },
+                    "primary_key_columns": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "regex_constraints": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "column": {
+                            "type": "string"
+                          },
+                          "pattern": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "column",
+                          "pattern"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "relationships": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "column": {
+                            "type": "string"
+                          },
+                          "reference": {
+                            "type": "string"
+                          },
+                          "reference_column": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "column",
+                          "reference",
+                          "reference_column"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "unique_columns": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "premise_format"
                   ],
                   "type": "object"
                 },
@@ -85,6 +290,13 @@
                 ]
               },
               "provenance": {
+                "enum": [
+                  "deterministic",
+                  "entity_consensus",
+                  "external",
+                  "llm_cache",
+                  "llm_live"
+                ],
                 "minLength": 1,
                 "type": "string"
               },
@@ -249,14 +461,15 @@
         },
         "mode": {
           "enum": [
-            "dry_run",
-            "apply"
+            "apply",
+            "dry_run"
           ],
           "type": "string"
         },
         "model": {
+          "description": "Provider and model identity when any fix is LLM-origin; null otherwise. Declared `string | null` until 2026-09-16, which contradicted both SPEC section 6.2 and `build_attestation`, whose emitted value is `dict(model)`. No vector caught it because every vector sets model to null.",
           "type": [
-            "string",
+            "object",
             "null"
           ]
         },
@@ -345,11 +558,11 @@
         "verdicts": {
           "properties": {
             "independent_verification": {
-              "type": [
-                "string",
-                "boolean",
-                "null"
-              ]
+              "enum": [
+                "agreed",
+                "not_run"
+              ],
+              "type": "string"
             },
             "safety": {
               "enum": [

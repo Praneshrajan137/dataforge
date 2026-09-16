@@ -120,6 +120,16 @@
       "tests/regression/test_env.py"
     ]
   },
+  "dataforge/domain/premise.py": {
+    "direct_tests": [
+      "tests/property/test_premise_round_trip.py",
+      "tests/unit/test_authority_enforcement_correspondence.py"
+    ],
+    "regression_tests": [
+      "tests/unit/test_attestation_vectors.py",
+      "tests/unit/test_attestation.py"
+    ]
+  },
   "dataforge/schema_inference.py": {
     "direct_tests": [
       "tests/unit/test_schema_inference.py",

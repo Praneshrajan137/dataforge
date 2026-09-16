@@ -50,12 +50,18 @@ from dataforge.engine.repair import ExternalFix
 from dataforge.metrics import clopper_pearson_upper
 
 __all__ = [
+    "ACCEPTED_VALUES_ONLY_SCHEMA",
     "COLUMNS",
+    "DDL_TYPICAL_SCHEMA",
     "GROUND_TRUTH",
+    "NON_ENCODABLE_TYPE_SCHEMA",
+    "NOT_NULL_ONLY_SCHEMA",
     "PERMISSIVE_SCHEMA",
+    "PRIMARY_KEY_ONLY_SCHEMA",
     "TIGHT_SCHEMA",
     "UNENFORCEABLE_AGGREGATE_SCHEMA",
     "UNENFORCEABLE_RELATIONSHIP_SCHEMA",
+    "UNIQUE_ONLY_SCHEMA",
     "Attack",
     "CorpusOutcome",
     "build_corpus",
@@ -157,6 +163,91 @@ UNENFORCEABLE_AGGREGATE_SCHEMA = Schema(
         )
         for column in COLUMNS
     ),
+)
+
+# --- The premises that isolate ONE ENFORCEABLE KIND EACH ----------------------------
+#
+# Added 2026-09-16. The block above isolates kinds nothing can check. These isolate kinds
+# that CAN be checked, one at a time, to measure HOW MUCH each one can reject. That question
+# has never been asked: ``authoritative_columns`` confers identical authority for all eight
+# enforceable kinds, and ``strength_for_fix`` keys on nothing but column-name membership, so
+# a column named by ``not_null_columns`` and one named by ``accepted_values`` are equally
+# authoritative and a fix on either is equally eligible to be labelled ``proven``.
+#
+# Why it is urgent rather than academic. ``TIGHT_SCHEMA``'s 0-of-14 is a BUNDLE result --
+# types, ``accepted_values``, ``regex_constraints`` and ``domain_bounds`` together -- so it
+# attributes strength to none of its members. The two external premise sources worth wiring
+# up supply a characteristic SUBSET: a dbt manifest gives ``not_null``, ``unique`` and
+# ``accepted_values``; database DDL gives ``not_null``, ``primary_key`` and ``unique``. Three
+# of those four are ABSENT from ``TIGHT_SCHEMA``. So a realistic externally-derived premise
+# is the tight bundle minus everything that might be doing the work, and until these arms
+# existed nobody knew what that scores.
+#
+# Same discipline as above: each is ``PERMISSIVE_SCHEMA`` plus exactly ONE added field.
+# ``ddl_typical`` is the single declared exception and says so in its own comment.
+#
+# See ``eval/preregistration/per_kind_authority.md``.
+
+NOT_NULL_ONLY_SCHEMA = Schema(
+    columns={"id": "str", "city": "str", "state": "str", "zip": "str", "score": "str"},
+    not_null_columns=frozenset(COLUMNS),
+)
+
+# `direct.py`:160 tests membership of `not_null_columns` OR `primary_key_columns` with one
+# predicate, so this arm exists to confirm the two are indistinguishable rather than to
+# discover something new. An arm that merely confirms is still worth running: the claim
+# "these are the same" is currently an inference from reading, not a measurement.
+PRIMARY_KEY_ONLY_SCHEMA = Schema(
+    columns={"id": "str", "city": "str", "state": "str", "zip": "str", "score": "str"},
+    primary_key_columns=frozenset(COLUMNS),
+)
+
+# Declaring `unique` over every column is FALSE of this table -- `chicago` and `springfield`
+# each appear twice. That is deliberate and realistic: Snowflake documents PRIMARY KEY,
+# FOREIGN KEY and UNIQUE as "Optional, not enforced", so a warehouse can and does carry
+# uniqueness declarations its data violates.
+UNIQUE_ONLY_SCHEMA = Schema(
+    columns={"id": "str", "city": "str", "state": "str", "zip": "str", "score": "str"},
+    unique_columns=frozenset(COLUMNS),
+)
+
+# The enumerations are the table's own value sets, which is the strongest honest form of this
+# declaration. If one kind alone reproduces the whole tight bundle's result, this is it.
+ACCEPTED_VALUES_ONLY_SCHEMA = Schema(
+    columns={"id": "str", "city": "str", "state": "str", "zip": "str", "score": "str"},
+    accepted_values=tuple(
+        AcceptedValues(
+            column=column,
+            values=tuple(sorted({row[COLUMNS.index(column)] for row in GROUND_TRUTH})),
+        )
+        for column in COLUMNS
+    ),
+)
+
+# THE PRODUCT QUESTION, and the one arm that breaks the one-field rule on purpose.
+#
+# What a DDL importer would actually emit for a typical production table: NOT NULL on the
+# columns that declare it, a PRIMARY KEY, and types that carry no domain information --
+# `Get Real` (DBTest'18) measured 48.8% of real BI tuple values stored as Text, and an
+# unconstrained VARCHAR narrows nothing. It has two added fields rather than one because it
+# models a real source rather than attributing a delta, and its composition is fixed in the
+# pre-registration so it cannot be tuned to a result.
+DDL_TYPICAL_SCHEMA = Schema(
+    columns={"id": "str", "city": "str", "state": "str", "zip": "str", "score": "str"},
+    not_null_columns=frozenset(COLUMNS),
+    primary_key_columns=frozenset({"id"}),
+)
+
+#: Axis 2: a declared type that CONFERS authority but that no verifier can ENCODE.
+#:
+#: `type_discriminates` is a denylist -- authority goes to any spelling absent from
+#: NON_DISCRIMINATING_COLUMN_TYPES -- while `direct.py`:148 returns UNKNOWN for any type outside
+#: {int, integer, float, decimal, real, str, string}. `date` sits in the gap: authoritative and
+#: uncheckable. This arm exists to measure what that gap costs, on both sides of the rule change,
+#: because the change looks obviously safe and that is when this repository has shipped the same
+#: defect three times. See eval/preregistration/per_kind_authority.md amendment 2 (P9, P10, K8-K10).
+NON_ENCODABLE_TYPE_SCHEMA = Schema(
+    columns=dict.fromkeys(COLUMNS, "date"),
 )
 
 

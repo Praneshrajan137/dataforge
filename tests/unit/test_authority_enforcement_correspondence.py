@@ -47,14 +47,14 @@ from pathlib import Path
 
 import pytest
 
+from dataforge.domain.premise import (
+    authoritative_columns,
+    columns_named_by_constraint_kind,
+)
 from dataforge.domain.vocabulary import (
     ENFORCEABLE_CONSTRAINT_KINDS,
     UNENFORCEABLE_CONSTRAINT_KINDS,
     constraint_kind_confers_authority,
-)
-from dataforge.engine.repair import (
-    authoritative_columns,
-    columns_named_by_constraint_kind,
 )
 from dataforge.verifier import direct as direct_module
 from dataforge.verifier import smt as smt_module

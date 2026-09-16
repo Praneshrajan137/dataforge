@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from dataforge.detectors.base import Schema
-from dataforge.engine.repair import apply_transaction, authoritative_columns, read_csv
+from dataforge.domain.premise import authoritative_columns
+from dataforge.engine.repair import apply_transaction, read_csv
 from dataforge.repairers.base import ProposedFix
 from dataforge.safety.filter import SafetyContext
 from dataforge.stores.base import StoreApplyReceipt, TableStore

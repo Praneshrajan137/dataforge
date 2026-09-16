@@ -99,6 +99,8 @@ MYPY_PATHS = [
     # invoked by nothing and type-checked by nothing -- a dead gate reads as coverage, which is
     # worse than no gate. It is now run below and checked here.
     "scripts/ci/mutate_autoapply_guards.py",
+    "scripts/ci/mutate_attestation.py",
+    "scripts/ci/spec_correspondence.py",
     "scripts/playground/build_samples.py",
     "scripts/playground/stage_space.py",
     "scripts/playground/verify_space_backend.py",
@@ -1289,6 +1291,19 @@ def main() -> int:
                     "attestation vector projection",
                     [PYTHON, "scripts/ci/generate_attestation_vectors.py", "--check"],
                 ),
+                # The schema generator ran in `make lint` only until 2026-09-16, so the one gate
+                # that enforces "every closed vocabulary the verifier enforces is published" had a
+                # single execution path. It is the gate a clean-room implementation depends on.
+                GateCommand(
+                    "attestation schema projection",
+                    [PYTHON, "scripts/ci/generate_attestation_schema.py", "--check"],
+                ),
+                # Binds specs/SPEC_repair_attestation.md to the code it specifies. Nothing read a
+                # specs/SPEC_*.md file before this, which is why four false claims lived there.
+                GateCommand(
+                    "spec correspondence",
+                    [PYTHON, "scripts/ci/spec_correspondence.py", "--check"],
+                ),
                 # Read-only: builds attestations in memory and runs a vector suite, writing
                 # nothing into the tree, so it is safe in a concurrent group. Its two siblings
                 # that DO write source files are run sequentially further down.
@@ -1334,6 +1349,8 @@ def main() -> int:
     checks.append(
         _run("domain vocabulary mutants", [PYTHON, "scripts/ci/mutate_domain_vocabulary.py"])
     )
+    # Sequential for the same reason as its siblings: it rewrites dataforge/attestation on disk.
+    checks.append(_run("attestation mutants", [PYTHON, "scripts/ci/mutate_attestation.py"]))
     checks.append(
         _run("adversarial corpus mutants", [PYTHON, "scripts/ci/mutate_adversarial_corpus.py"])
     )

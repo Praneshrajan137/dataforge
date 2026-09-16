@@ -23,6 +23,11 @@ from __future__ import annotations
 
 import re
 
+from dataforge.domain.vocabulary import (
+    ENCODABLE_FLOAT_TYPES,
+    ENCODABLE_INT_TYPES,
+    ENCODABLE_STR_TYPES,
+)
 from dataforge.repairers.base import ProposedFix
 from dataforge.table import (
     TableLike,
@@ -35,9 +40,9 @@ from dataforge.table import (
 from dataforge.verifier.result import VerificationResult, VerificationVerdict
 from dataforge.verifier.schema import Schema
 
-_INT_TYPES = frozenset({"int", "integer"})
-_FLOAT_TYPES = frozenset({"float", "decimal", "real"})
-_STR_TYPES = frozenset({"str", "string"})
+_INT_TYPES = ENCODABLE_INT_TYPES
+_FLOAT_TYPES = ENCODABLE_FLOAT_TYPES
+_STR_TYPES = ENCODABLE_STR_TYPES
 
 
 def _accept(reason: str) -> VerificationResult:

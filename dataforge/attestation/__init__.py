@@ -39,6 +39,13 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
+from dataforge.domain.premise import (
+    PremiseFormatError,
+    authoritative_columns,
+    conferring_kinds,
+    premise_from_canonical,
+    premise_to_canonical,
+)
 from dataforge.domain.vocabulary import (
     PROVENANCE_ORDER as _PROVENANCE_ORDER,
 )
@@ -50,9 +57,12 @@ from dataforge.domain.vocabulary import (
     is_trusted_provenance,
     verification_strength_for,
 )
+from dataforge.verifier.schema import Schema
 
 __all__ = [
     "ATTESTATION_VERSION",
+    "CLOSED_VOCABULARIES",
+    "NORMATIVE_CHECKS",
     "PAYLOAD_TYPE",
     "PREDICATE_TYPE",
     "STATEMENT_TYPE",
@@ -75,6 +85,85 @@ _STRENGTHS: Final[frozenset[str]] = frozenset(VERIFICATION_STRENGTHS)
 _REVIEW_REASONS: Final[frozenset[str]] = frozenset(REVIEW_REASONS)
 _VERIFIER_VERDICTS: Final[frozenset[str]] = frozenset(VERIFIER_VERDICTS)
 _SAFETY_VERDICTS: Final[frozenset[str]] = frozenset(SAFETY_VERDICTS)
+_MODES: Final[frozenset[str]] = frozenset({"apply", "dry_run"})
+
+#: Accepted values for ``verdicts.independent_verification``.
+#:
+#: Two members, not three. ``dataforge.domain.vocabulary.INDEPENDENT_VERIFICATION_HUMAN`` carries a
+#: label for ``disagreed`` as well, so the vocabulary module can name an outcome this format cannot
+#: express: an attestation reporting that the second verifier DISAGREED fails ``vocabulary_closed``
+#: as malformed, and the rejection reads "unrecognised value" rather than "the verifiers disagreed".
+#: Recorded rather than widened, because admitting the value raises a separate question this
+#: measurement did not ask -- whether ``verdicts_accepting`` should then reject it -- and that is a
+#: design decision, not a correspondence fix. See docs/trust/specification-sufficiency.md.
+_INDEPENDENT_VERIFICATIONS: Final[frozenset[str]] = frozenset({"agreed", "not_run"})
+
+#: Where each closed vocabulary lives, the label its rejection message uses, and its members.
+#:
+#: Ordered to reproduce the rejection-message order the TypeScript implementation also emits.
+#: ``_check_vocabulary`` iterates this table and ``scripts/ci/generate_attestation_schema.py``
+#: projects it, so the set this tier ENFORCES and the set the published schema ADVERTISES cannot
+#: diverge. Before 2026-09-16 the generator hand-enumerated four vocabularies while this tier
+#: enforced seven, leaving ``provenance`` and ``independent_verification`` published nowhere --
+#: which made SPEC section 6.2's claim that the vocabularies are "published as enums in the JSON
+#: Schema" false, and cost a clean-room implementation 20 of 26 conformance vectors.
+_VOCABULARY_SITES: Final[tuple[tuple[str, str, str, frozenset[str]], ...]] = (
+    ("fixes", "provenance", "fix provenance", _PROVENANCES),
+    ("fixes", "verification_strength", "fix verification_strength", _STRENGTHS),
+    ("held", "review_reason", "held review_reason", _REVIEW_REASONS),
+    ("verdicts", "verifier", "verifier verdict", _VERIFIER_VERDICTS),
+    ("verdicts", "safety", "safety verdict", _SAFETY_VERDICTS),
+    (
+        "verdicts",
+        "independent_verification",
+        "independent_verification",
+        _INDEPENDENT_VERIFICATIONS,
+    ),
+    ("predicate", "mode", "mode", _MODES),
+)
+
+
+def _vocabulary_key(container: str, field: str) -> str:
+    """Path to a closed vocabulary WITHIN the predicate, matching the JSON Schema's shape."""
+    if container in {"fixes", "held"}:
+        return f"{container}[].{field}"
+    if container == "predicate":
+        return field
+    return f"{container}.{field}"
+
+
+#: Every closed vocabulary the normative tier enforces, keyed by its path in the predicate.
+#: Derived from :data:`_VOCABULARY_SITES` so there is exactly one place to add one.
+CLOSED_VOCABULARIES: Final[dict[str, frozenset[str]]] = {
+    _vocabulary_key(container, field): members
+    for container, field, _label, members in _VOCABULARY_SITES
+}
+
+#: Every normative check this tier can report. The POPULATION, not an order: ``verify_attestation``
+#: emits ``signature`` first on a DSSE envelope, while the specification lists it eleventh.
+#:
+#: :class:`AttestationCheck` refuses a name absent from here, so a new check cannot reach a report
+#: without being registered -- and ``scripts/ci/spec_correspondence.py`` requires every member to be
+#: named by the specification and exercised by a vector, or listed as an explicit exemption with a
+#: reason. That is the DO-178C shape PRODUCT.md section 1.3 prescribes: enumerate the artifact, name
+#: the remainder, refuse on anything unnameable.
+NORMATIVE_CHECKS: Final[tuple[str, ...]] = (
+    "envelope_recognised",
+    "version_recognised",
+    "schema_complete",
+    "vocabulary_closed",
+    "subject_matches_post_state",
+    "data_identity",
+    "reversibility_complete",
+    "verdicts_accepting",
+    "strength_is_earned",
+    "constraints_present",
+    "signature",
+    "witness_is_coherent",
+    "authority_is_entailed",
+)
+
+_NORMATIVE_CHECK_NAMES: Final[frozenset[str]] = frozenset(NORMATIVE_CHECKS)
 
 
 class AttestationCheck:
@@ -87,6 +176,18 @@ class AttestationCheck:
     __slots__ = ("detail", "name", "ok", "skipped")
 
     def __init__(self, name: str, ok: bool, detail: str, *, skipped: bool = False) -> None:
+        if name not in _NORMATIVE_CHECK_NAMES:
+            # Refuse on the unnameable, at the construction site. Between 2026-08-29 and
+            # 2026-09-16 `witness_is_coherent` was emitted by both implementations while
+            # SPEC section 7 listed eleven checks, `verification.checks_available` advertised ten,
+            # and the vector suite's own totality guard enumerated ten -- four populations, two of
+            # them numerically equal with different members. None could see the twelfth, because
+            # a check name was a bare string literal at every emission site.
+            raise ValueError(
+                f"{name!r} is not in NORMATIVE_CHECKS. A new normative check must be registered "
+                "there, named in specs/SPEC_repair_attestation.md section 7, and exercised by a "
+                "vector or declared exempt -- see scripts/ci/spec_correspondence.py."
+            )
         self.name = name
         self.ok = ok
         self.detail = detail
@@ -208,6 +309,7 @@ def attest_repair(
     tool_version: str,
     produced_at: str,
     constraints: Mapping[str, Any] | None = None,
+    authority_schema: Schema | None = None,
     journal_head_sha256: str | None = None,
     data_bytes: bytes | None = None,
     witnesses: Mapping[tuple[int, str], Mapping[str, Any]] | None = None,
@@ -238,6 +340,7 @@ def attest_repair(
             produced_at=produced_at,
             subject_name=subject_name,
             constraints=constraints,
+            authority_schema=authority_schema,
             journal_head_sha256=journal_head_sha256,
             witnesses=witnesses,
         )
@@ -283,6 +386,7 @@ def build_attestation(
     produced_at: str,
     subject_name: str,
     constraints: Mapping[str, object] | None = None,
+    authority_schema: Schema | None = None,
     journal_head_sha256: str | None = None,
     model: Mapping[str, object] | None = None,
     witnesses: Mapping[tuple[int, str], Mapping[str, object]] | None = None,
@@ -314,6 +418,15 @@ def build_attestation(
         _sha256_hex(_canonical_json(constraints_payload)) if constraints_payload else None
     )
 
+    # The premise, projected from the Schema authority was computed from rather than assembled by a
+    # caller. Taking a `Schema` instead of a ready-made mapping is deliberate: it makes it impossible
+    # to embed a premise that is not a faithful projection of a real schema, which is the whole basis
+    # on which `authority_is_entailed` can treat the recomputation as meaningful. See
+    # `dataforge/domain/premise.py` for why the format fails closed, and SPEC section 6.4.
+    premise_payload = (
+        premise_to_canonical(authority_schema) if authority_schema is not None else None
+    )
+
     predicate: dict[str, Any] = {
         "attestation_version": ATTESTATION_VERSION,
         "tool": {
@@ -336,6 +449,7 @@ def build_attestation(
             ],
             "constraints_digest": {"sha256": constraints_digest} if constraints_digest else None,
             "constraints": constraints_payload,
+            "premise": premise_payload,
         },
         "fixes": [
             {
@@ -369,18 +483,11 @@ def build_attestation(
         "model": dict(model) if model is not None else None,
         "limitations": [str(item) for item in _sequence_of_str(receipt.get("limitations"))],
         "verification": {
-            "checks_available": [
-                "envelope_recognised",
-                "version_recognised",
-                "schema_complete",
-                "vocabulary_closed",
-                "subject_matches_post_state",
-                "data_identity",
-                "reversibility_complete",
-                "verdicts_accepting",
-                "strength_is_earned",
-                "constraints_present",
-            ]
+            # The producer's implemented check POPULATION, derived rather than restated. Until
+            # 2026-09-16 this was a hardcoded ten-name literal that omitted `signature` and
+            # `witness_is_coherent`, so every attestation ever emitted told a third party not to
+            # run the one check that breaks the strength circularity.
+            "checks_available": list(NORMATIVE_CHECKS),
         },
     }
 
@@ -556,6 +663,7 @@ def verify_attestation(
     checks.extend(_check_reversibility(predicate))
     checks.extend(_check_verdicts(predicate))
     checks.extend(_check_strength(predicate))
+    checks.extend(_check_authority(predicate))
     checks.extend(_check_witness(predicate))
 
     return AttestationVerification(checks)
@@ -764,38 +872,31 @@ def _check_schema(
 
 
 def _check_vocabulary(predicate: Mapping[str, object]) -> list[AttestationCheck]:
-    """Every enum value must be a member of its published set. Unknown is a REJECT."""
+    """Every enum value must be a member of its published set. Unknown is a REJECT.
+
+    Membership comes from :data:`_VOCABULARY_SITES`, never from inline literals, so the set this
+    tier enforces is the same object the published JSON Schema is generated from.
+    """
     problems: list[str] = []
 
-    for fix in _sequence_of_mappings(predicate.get("fixes")):
-        provenance = fix.get("provenance")
-        if provenance not in _PROVENANCES:
-            problems.append(f"fix provenance {provenance!r}")
-        strength = fix.get("verification_strength")
-        if strength not in _STRENGTHS:
-            problems.append(f"fix verification_strength {strength!r}")
-
-    for item in _sequence_of_mappings(predicate.get("held")):
-        reason = item.get("review_reason")
-        if reason not in _REVIEW_REASONS:
-            problems.append(f"held review_reason {reason!r}")
+    for container in ("fixes", "held"):
+        sites = [site for site in _VOCABULARY_SITES if site[0] == container]
+        for item in _sequence_of_mappings(predicate.get(container)):
+            for _container, field, label, members in sites:
+                if item.get(field) not in members:
+                    problems.append(f"{label} {item.get(field)!r}")
 
     verdicts = predicate.get("verdicts")
     if isinstance(verdicts, Mapping):
-        if verdicts.get("verifier") not in _VERIFIER_VERDICTS:
-            problems.append(f"verifier verdict {verdicts.get('verifier')!r}")
-        if verdicts.get("safety") not in _SAFETY_VERDICTS:
-            problems.append(f"safety verdict {verdicts.get('safety')!r}")
-        if verdicts.get("independent_verification") not in {"agreed", "not_run"}:
-            problems.append(
-                f"independent_verification {verdicts.get('independent_verification')!r}"
-            )
+        for _container, field, label, members in _VOCABULARY_SITES:
+            if _container == "verdicts" and verdicts.get(field) not in members:
+                problems.append(f"{label} {verdicts.get(field)!r}")
     else:
         problems.append("verdicts is not an object")
 
-    mode = predicate.get("mode")
-    if mode not in {"apply", "dry_run"}:
-        problems.append(f"mode {mode!r}")
+    for _container, field, label, members in _VOCABULARY_SITES:
+        if _container == "predicate" and predicate.get(field) not in members:
+            problems.append(f"{label} {predicate.get(field)!r}")
 
     return [
         AttestationCheck(
@@ -995,7 +1096,13 @@ def _check_strength(predicate: Mapping[str, object]) -> list[AttestationCheck]:
             AttestationCheck(
                 "constraints_present",
                 has_constraints,
-                "embedded constraints support the schema-proven writes"
+                # Corrected 2026-09-16. This read "embedded constraints support the schema-proven
+                # writes", which is an assertion the check does not make and cannot make: nothing
+                # here compares `constraints` to anything. A detail string that overstates its own
+                # check is worse than no detail, because a reader auditing the report sees support
+                # claimed where only presence was tested. `authority_is_entailed` is the check that
+                # tests entailment; this one tests presence, and now says so.
+                "a constraint payload is present (presence only -- see authority_is_entailed)"
                 if has_constraints
                 else "a write is proven only by schema authority, but no constraints are embedded",
             )
@@ -1010,3 +1117,108 @@ def _check_strength(predicate: Mapping[str, object]) -> list[AttestationCheck]:
         )
 
     return checks
+
+
+def _check_authority(predicate: Mapping[str, object]) -> list[AttestationCheck]:
+    """Recompute the authoritative column set from the published premise and compare.
+
+    The check that makes ``strength_is_earned`` mean something. That check derives every fix's
+    strength from membership in ``authority.authoritative_columns`` and therefore, as
+    ``specs/SPEC_repair_attestation.md`` section 7 check 9 says of itself, "validates field
+    consistency rather than the rule" -- it reads the claim as trusted input. Until this check
+    existed a producer could emit any column list beside any constraint payload and pass all twelve
+    preceding checks, so ``proven`` was an assertion a reader had to accept rather than arithmetic a
+    reader could repeat.
+
+    The rule applied here is published verbatim in specification section 6.4.2 and implemented once,
+    in :mod:`dataforge.domain.premise`. This module imports it rather than restating it, because a
+    second implementation of the authority rule beside the verifier is the hand-maintained-duplicate
+    defect recorded four times in ``PRODUCT.md`` section 1.3.
+
+    Three cases, per the specification:
+
+    1. an empty claim **passes** whatever the premise -- it asserts no authority;
+    2. a non-empty claim with an absent or unreadable premise **fails**, and the parse error is
+       reported rather than swallowed, because an implementation that silently treats an unreadable
+       premise as an empty one reaches the right verdict for the wrong reason and cannot tell an
+       operator what is malformed;
+    3. otherwise the two sets must be **equal**. Not containment: a claim narrower than the premise
+       entails means the producer and the reader disagree about the rule, and a disagreement that
+       happens to be conservative today is still a disagreement.
+
+    Never ``skipped``. Case 1 is a genuine pass, and reporting it as skipped would let a document
+    with no authority claim look partially unverified.
+    """
+    authority = predicate.get("authority")
+    claimed: frozenset[str] = frozenset()
+    premise: object = None
+    if isinstance(authority, Mapping):
+        claimed = frozenset(
+            str(column) for column in _sequence_of_str(authority.get("authoritative_columns"))
+        )
+        premise = authority.get("premise")
+
+    if not claimed:
+        return [
+            AttestationCheck(
+                "authority_is_entailed",
+                True,
+                "no columns are claimed as authoritative, so nothing needs entailing",
+            )
+        ]
+
+    if premise is None:
+        return [
+            AttestationCheck(
+                "authority_is_entailed",
+                False,
+                f"authority over {sorted(claimed)} is claimed but no premise is published, so the "
+                "claim cannot be checked by anyone",
+            )
+        ]
+
+    try:
+        schema = premise_from_canonical(premise)
+    except PremiseFormatError as error:
+        return [
+            AttestationCheck(
+                "authority_is_entailed",
+                False,
+                f"the published premise cannot be read, so authority over {sorted(claimed)} cannot "
+                f"be derived from it: {error}",
+            )
+        ]
+
+    entailed = authoritative_columns(schema)
+    if entailed == claimed:
+        # The per-kind breakdown is the point of reporting a detail at all: it is the first time a
+        # consumer of an attestation can see WHICH constraint kind conferred authority. Measured
+        # 2026-09-16, the eight conferring kinds differ by a factor of ten in what they can actually
+        # reject -- `accepted_values` alone admits 0 of 14 adversarial writes and `unique_columns`
+        # admits 10 (docs/trust/per-kind-authority.md). A reader who can see the kind can weigh
+        # that; a reader handed a flat list of column names cannot. It is derived here rather than
+        # embedded in the document precisely so it cannot be forged.
+        by_kind = {kind: sorted(columns) for kind, columns in conferring_kinds(schema).items()}
+        return [
+            AttestationCheck(
+                "authority_is_entailed",
+                True,
+                f"the published premise entails authority over exactly {sorted(claimed)}; "
+                f"conferred by {by_kind}",
+            )
+        ]
+
+    overclaimed = sorted(claimed - entailed)
+    underclaimed = sorted(entailed - claimed)
+    parts: list[str] = []
+    if overclaimed:
+        parts.append(f"claimed but not entailed: {overclaimed}")
+    if underclaimed:
+        parts.append(f"entailed but not claimed: {underclaimed}")
+    return [
+        AttestationCheck(
+            "authority_is_entailed",
+            False,
+            "the published premise does not entail the authority claimed -- " + "; ".join(parts),
+        )
+    ]

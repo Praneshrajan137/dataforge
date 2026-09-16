@@ -80,6 +80,42 @@ _UNPROJECTED: Final[dict[str, str]] = {
         "Human labels for NEXT_ACTIONS, withheld with them and to be projected with them for "
         "the same paired-consistency reason as OUTCOME_CODE_HUMAN."
     ),
+    # Added 2026-09-16 with the Axis-2 fix. Withheld as a group, for one reason.
+    "ENCODABLE_INT_TYPES": (
+        "Which type spellings the SMT and Direct verifiers can encode. Withheld for the reason "
+        "CONSTRAINT_CHECKABLE_DETECTORS is withheld: it must not become a client-side decision "
+        "about what the engine would permit. The browser verifier reads the authoritative "
+        "columns the attestation DECLARES; it does not re-derive them from column types, and a "
+        "second implementation of the authority rule is a second thing that can disagree."
+    ),
+    "ENCODABLE_FLOAT_TYPES": (
+        "Withheld with ENCODABLE_INT_TYPES, for the same reason and in the same change."
+    ),
+    "ENCODABLE_STR_TYPES": (
+        "Withheld with ENCODABLE_INT_TYPES, for the same reason and in the same change."
+    ),
+    "ENCODABLE_COLUMN_TYPES": (
+        "The union of the three sets above, withheld with them. Projecting a derived set while "
+        "withholding its members would let the browser hold half the rule."
+    ),
+    # DISCRIMINATING_COLUMN_TYPES was withheld here on 2026-09-16 and is now PROJECTED, in the same
+    # change that added its consumer. The withheld entry read, in full:
+    #
+    #   "The authority rule itself: which declared types may confer write authority. Withheld for
+    #    the strongest form of the ENCODABLE_INT_TYPES reason -- this is the engine's decision about
+    #    what can be proven, and the browser's job is to check whether the attestation's OWN claims
+    #    are internally coherent, not to recompute the premise. **The condition that would reverse
+    #    this**: if a browser consumer ever needs to warn that an attestation claims authority over a
+    #    column whose declared type cannot support it, this must be projected in the same change as
+    #    that consumer, never before it."
+    #
+    # The `authority_is_entailed` check in verify.ts is that consumer. The original text is kept
+    # above rather than deleted because a reversal whose stated condition cannot be re-read is
+    # indistinguishable from a convenient one -- and because the reasoning was half right: the risk
+    # of a second implementation of the rule is real, and the answer is that the rule is published
+    # in SPEC section 6.4.2 and projected from ONE source, not that the browser is denied it. Denying
+    # it is what left `authoritative_columns` uncheckable, and an unbound authority claim is a larger
+    # hole than a drifting one.
 }
 
 
@@ -192,6 +228,34 @@ def render() -> str:
             "CALIBRATED_PROVENANCE",
             vocab.CALIBRATED_PROVENANCE,
             "Strict subset of untrusted that additionally needs a calibrated threshold.",
+        )
+    )
+    # Projected 2026-09-16, reversing the withhold recorded below in _UNPROJECTED. That entry named
+    # the exact condition under which it must be reversed -- "if a browser consumer ever needs to
+    # warn that an attestation claims authority over a column whose declared type cannot support
+    # it, this must be projected in the same change as that consumer, never before it" -- and the
+    # `authority_is_entailed` check in verify.ts is that consumer, added in this same change.
+    #
+    # The earlier reasoning was that recomputing the premise would be "a client-side decision about
+    # what the engine would permit". That was right about the risk and wrong about the remedy. The
+    # risk is a SECOND implementation of the rule drifting from the first; the remedy is for the
+    # rule to be published in SPEC section 6.4.2 and projected from one source, not for the browser
+    # to be denied it -- because denying it is what left `authoritative_columns` uncheckable, and an
+    # unbound authority claim is a larger hole than a drifting one.
+    parts.append(
+        _string_set(
+            "DISCRIMINATING_COLUMN_TYPES",
+            vocab.DISCRIMINATING_COLUMN_TYPES,
+            "Declared types that may confer write authority: narrowing AND encodable by both "
+            "verifiers. An allowlist that fails closed -- SPEC section 6.4.2.",
+        )
+    )
+    parts.append(
+        _string_set(
+            "ENFORCEABLE_CONSTRAINT_KINDS",
+            vocab.ENFORCEABLE_CONSTRAINT_KINDS,
+            "Schema constraint kinds a verifier can reject on, so they may confer write "
+            "authority. The other three name columns without constraining them.",
         )
     )
     parts.append(

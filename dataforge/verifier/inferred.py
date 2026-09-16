@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import re
 
+from dataforge.domain.vocabulary import ENCODABLE_FLOAT_TYPES, ENCODABLE_INT_TYPES
 from dataforge.table import TableLike, cell_value, column_names, row_count
 from dataforge.verifier.schema import DomainBound, Schema
 
@@ -51,9 +52,9 @@ def parse_numeric(value: str) -> float | None:
 def type_violation(value: str, column_type: str) -> str | None:
     """Return a reason if ``value`` does not parse as ``column_type``."""
     column_type = column_type.strip().lower()
-    if column_type in {"int", "integer"} and not _INT_RE.fullmatch(value):
+    if column_type in ENCODABLE_INT_TYPES and not _INT_RE.fullmatch(value):
         return f"value {value!r} is not a valid integer (inferred type int)"
-    if column_type in {"float", "decimal", "real"} and not _FLOAT_RE.fullmatch(value):
+    if column_type in ENCODABLE_FLOAT_TYPES and not _FLOAT_RE.fullmatch(value):
         return f"value {value!r} is not a valid number (inferred type {column_type})"
     return None
 

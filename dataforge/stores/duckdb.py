@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from dataforge.detectors.base import Schema
-from dataforge.engine.repair import authoritative_columns
+from dataforge.domain.premise import authoritative_columns
 from dataforge.repairers.base import ProposedFix
 from dataforge.safety.filter import SafetyContext
 from dataforge.stores.base import StoreApplyReceipt, TableStore, TableStoreError

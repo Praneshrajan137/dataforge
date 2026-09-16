@@ -31,10 +31,16 @@ from dataforge.detectors.base import Schema  # noqa: E402
 from dataforge.engine.repair import VerifyAndApplyRequest, verify_and_apply  # noqa: E402
 from dataforge.metrics import TrustLedger  # noqa: E402
 from tests.adversarial.corpus import (  # noqa: E402
+    ACCEPTED_VALUES_ONLY_SCHEMA,
+    DDL_TYPICAL_SCHEMA,
+    NON_ENCODABLE_TYPE_SCHEMA,
+    NOT_NULL_ONLY_SCHEMA,
     PERMISSIVE_SCHEMA,
+    PRIMARY_KEY_ONLY_SCHEMA,
     TIGHT_SCHEMA,
     UNENFORCEABLE_AGGREGATE_SCHEMA,
     UNENFORCEABLE_RELATIONSHIP_SCHEMA,
+    UNIQUE_ONLY_SCHEMA,
     build_corpus,
     truth,
     write_table,
@@ -87,6 +93,7 @@ def measure(schema: Schema, label: str, *, only: str = "all") -> tuple[TrustLedg
     corruptions = 0
     held = 0
     corrupting: list[str] = []
+    wrongly_blocked: list[str] = []
     reversible = True
 
     with tempfile.TemporaryDirectory() as directory:
@@ -121,6 +128,8 @@ def measure(schema: Schema, label: str, *, only: str = "all") -> tuple[TrustLedg
                         corrections += 1
             else:
                 held += 1
+                if attack.is_correct_proposal:
+                    wrongly_blocked.append(attack.name)
 
     # Real errors present: one, introduced by the single legitimate attack's pre_corrupt.
     real_errors = sum(1 for attack in corpus if attack.pre_corrupt is not None)
@@ -139,6 +148,12 @@ def measure(schema: Schema, label: str, *, only: str = "all") -> tuple[TrustLedg
         "subset": only,
         "attacks": len(corpus),
         "corrupting_attacks": sorted(set(corrupting)),
+        # Recorded from 2026-09-16, because zero corruptions is not a safety result and the
+        # corruption count alone cannot tell SAFE from INERT. `permissive` and both
+        # `unenforceable_*` arms all write zero; so would a premise that rejects everything.
+        # The corpus carries exactly one legitimate proposal, and whether an arm keeps it is
+        # the field that separates the two readings.
+        "wrongly_blocked": sorted(set(wrongly_blocked)),
     }
     return ledger, detail
 
@@ -201,6 +216,39 @@ def main() -> int:
             UNENFORCEABLE_AGGREGATE_SCHEMA,
             "unenforceable (permissive + an aggregate dependency on every column)",
         ),
+        # Added 2026-09-16. The four arms above answer "can any verifier check this kind?".
+        # These answer the question nobody had asked: HOW MUCH can each checkable kind
+        # reject? `authoritative_columns` confers identical authority for all eight
+        # enforceable kinds, and `TIGHT_SCHEMA`'s 0-of-14 is a bundle of four of them, so it
+        # attributes strength to none of its members. A dbt manifest or a database's DDL
+        # supplies a characteristic SUBSET -- and three of the kinds they supply are absent
+        # from the tight bundle. See eval/preregistration/per_kind_authority.md.
+        "not_null_only": (
+            NOT_NULL_ONLY_SCHEMA,
+            "one kind (permissive + not_null on every column)",
+        ),
+        "primary_key_only": (
+            PRIMARY_KEY_ONLY_SCHEMA,
+            "one kind (permissive + primary_key on every column)",
+        ),
+        "unique_only": (
+            UNIQUE_ONLY_SCHEMA,
+            "one kind (permissive + unique on every column)",
+        ),
+        "accepted_values_only": (
+            ACCEPTED_VALUES_ONLY_SCHEMA,
+            "one kind (permissive + accepted_values on every column)",
+        ),
+        "ddl_typical": (
+            DDL_TYPICAL_SCHEMA,
+            "what a DDL importer emits (not_null + a primary key + no discriminating types)",
+        ),
+        # Axis 2, added 2026-09-16: a type that confers authority and that no verifier can encode.
+        # Measured on BOTH sides of the denylist-to-derived-set change, per K9.
+        "non_encodable_type_only": (
+            NON_ENCODABLE_TYPE_SCHEMA,
+            "one uncheckable type (permissive + every column declared `date`)",
+        ),
     }
     subsets = ("discriminable", "undecidable", "all")
 
@@ -253,27 +301,64 @@ def main() -> int:
         "able to reject it. Each premise here is the permissive premise plus exactly one added "
         "field, so the delta is attributable to that field alone. Measured before the fix, "
         "adding a relationship on every column took the premise from 0 writes to 11, corrupting "
-        f"10 of {_permissive['attacks']}, and one applied injection took the table from 6 rows "
-        "to 7; the aggregate premise was identical at 11 and 10. That reproduced the "
-        "pre-2026-08-25 `str` figure exactly, so requiring a declared TYPE to discriminate had "
-        "closed one door and left an equivalent one open. Both verifiers ACCEPTED in every "
-        "case, so they agreed -- N-version diversity cannot catch a constraint kind absent from "
-        "the specification both implementations share, and require_independent_agreement reads "
-        "agreement as verification. After the fix the unenforceable premises write "
-        f"{_relationship['cells_applied']} and {_aggregate['cells_applied']} cells and corrupt "
-        f"{_relationship['corruptions']} and {_aggregate['corruptions']}, collapsing onto the "
-        f"permissive premise's {_permissive['cells_applied']}, while the tight premise keeps its "
+        f"10 of {_permissive['attacks']}, and one applied injection was recorded as taking the "
+        "table from 6 rows to 7; the aggregate premise was identical at 11 and 10. That "
+        "reproduced the pre-2026-08-25 `str` figure exactly, so requiring a declared TYPE to "
+        "discriminate had closed one door and left an equivalent one open. Both verifiers "
+        "ACCEPTED in every case, so they agreed -- N-version diversity cannot catch a constraint "
+        "kind absent from the specification both implementations share, and "
+        "require_independent_agreement reads agreement as verification. After the fix the "
+        f"unenforceable premises write {_relationship['cells_applied']} and "
+        f"{_aggregate['cells_applied']} cells and corrupt {_relationship['corruptions']} and "
+        f"{_aggregate['corruptions']}, collapsing onto the permissive premise's "
+        f"{_permissive['cells_applied']}, while the tight premise keeps its "
         f"{_tight['cells_applied']} legitimate repair at {_tight['corruptions']} corruptions. "
         "The authority/enforcement partition is now asserted total against Schema's own fields "
-        "by tests/unit/test_authority_enforcement_correspondence.py."
+        "by tests/unit/test_authority_enforcement_correspondence.py. CORRECTION 2026-09-16: the "
+        "row-count clause above reports a PHYSICAL LINE count from an assertion that called "
+        "splitlines() the table shape. A quoted CSV field may legally contain a newline, and "
+        "the same attack measured with a CSV reader leaves the parsed row count and every "
+        "per-row field count unchanged. It was a value corruption, not a structural one; "
+        "whether the original was structural cannot be reproduced, because the unenforceable "
+        "arms now write zero. See eval/preregistration/per_kind_authority.md amendment 1."
+    )
+
+    # Generated for the same reason as the two strings above. This one answers a question the
+    # bundle-versus-permissive comparison cannot: eight kinds confer IDENTICAL authority, so how
+    # much can each one actually reject? See eval/preregistration/per_kind_authority.md.
+    _not_null = results["not_null_only"]["discriminable"]
+    _unique = results["unique_only"]["discriminable"]
+    _accepted = results["accepted_values_only"]["discriminable"]
+    _primary_key = results["primary_key_only"]["discriminable"]
+    _ddl = results["ddl_typical"]["discriminable"]
+    per_kind = (
+        "The tight premise's zero is a BUNDLE result -- discriminating types, accepted_values, "
+        "regex_constraints and domain_bounds together -- so it attributes strength to none of "
+        "its members. Measured one kind at a time against the same "
+        f"{_permissive['attacks']} attacks, with the same gate: accepted_values alone corrupts "
+        f"{_accepted['corruptions']} and keeps its {_accepted['corrections']} legitimate repair, "
+        f"reproducing the whole bundle by itself; not_null alone corrupts "
+        f"{_not_null['corruptions']}; unique alone corrupts {_unique['corruptions']}, matching "
+        "the retired `str` premise's 10 exactly by a third independent route. So the bar for "
+        "conferring authority -- can this reject a value at all -- is met by declarations whose "
+        "measured power differs by a factor of ten. primary_key alone corrupts "
+        f"{_primary_key['corruptions']}, but it is INERT rather than strong: "
+        f"{_primary_key['wrongly_blocked']} is blocked too, because "
+        "dataforge/safety/constitution.py refuses any edit to a declared key column before the "
+        "verifier runs. The product consequence is ddl_typical, which is what a DDL importer "
+        f"emits for a typical production table: it corrupts {_ddl['corruptions']} of "
+        f"{_ddl['attacks']}. not_null is on roughly 56% of real columns and unique is one of "
+        "dbt's four generic tests, so an importer treating either as an authority source would "
+        "mass-produce the defect removed on 2026-08-25."
     )
 
     payload = {
         "measurement": "trust_ledger_adversarial",
         "headline": headline,
         "correspondence": correspondence,
+        "per_kind_authority": per_kind,
         "note": (
-            "Trust Ledger over the adversarial corpus, under two schema premises and split "
+            "Trust Ledger over the adversarial corpus, under nine schema premises and split "
             "by subset. 'discriminable' attacks violate a declared constraint and are the "
             "gate's responsibility. 'undecidable' attacks satisfy every declared constraint "
             "and are merely false; no verifier can reject them without ground truth, so "
@@ -305,6 +390,7 @@ def main() -> int:
         f"{'/'.join(_PRE_EXISTING_ARMS)} arms reproduce the committed artifact field-for-field."
     )
     print(f"\nCORRESPONDENCE: {correspondence}")
+    print(f"\nPER-KIND AUTHORITY: {per_kind}")
 
     if args.write:
         ARTIFACT.parent.mkdir(parents=True, exist_ok=True)

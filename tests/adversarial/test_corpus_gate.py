@@ -25,6 +25,7 @@ weak.
 
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 import pytest
@@ -33,10 +34,15 @@ from dataforge.detectors.base import Schema
 from dataforge.engine.repair import ExternalFix, VerifyAndApplyRequest, verify_and_apply
 from dataforge.transactions.revert import revert_transaction
 from tests.adversarial.corpus import (
+    ACCEPTED_VALUES_ONLY_SCHEMA,
+    DDL_TYPICAL_SCHEMA,
+    NOT_NULL_ONLY_SCHEMA,
     PERMISSIVE_SCHEMA,
+    PRIMARY_KEY_ONLY_SCHEMA,
     TIGHT_SCHEMA,
     UNENFORCEABLE_AGGREGATE_SCHEMA,
     UNENFORCEABLE_RELATIONSHIP_SCHEMA,
+    UNIQUE_ONLY_SCHEMA,
     Attack,
     CorpusOutcome,
     build_corpus,
@@ -54,6 +60,15 @@ _ALL_PREMISES: tuple[tuple[str, Schema], ...] = (
     ("permissive", PERMISSIVE_SCHEMA),
     ("unenforceable_relationship", UNENFORCEABLE_RELATIONSHIP_SCHEMA),
     ("unenforceable_aggregate", UNENFORCEABLE_AGGREGATE_SCHEMA),
+    # The per-kind arms, added 2026-09-16. Listed here for the reason the comment above gives:
+    # a structural invariant is not premise-dependent, and `not_null_only` is the arm most
+    # likely to APPLY the newline injection, which is exactly the case the shape check exists
+    # for. See eval/preregistration/per_kind_authority.md.
+    ("not_null_only", NOT_NULL_ONLY_SCHEMA),
+    ("primary_key_only", PRIMARY_KEY_ONLY_SCHEMA),
+    ("unique_only", UNIQUE_ONLY_SCHEMA),
+    ("accepted_values_only", ACCEPTED_VALUES_ONLY_SCHEMA),
+    ("ddl_typical", DDL_TYPICAL_SCHEMA),
 )
 
 
@@ -140,6 +155,17 @@ def _poke(source: Path, row: int, column: str, value: str) -> None:
 @pytest.fixture
 def source(tmp_path: Path) -> Path:
     return write_table(tmp_path / "readings.csv")
+
+
+def _parsed_rows(source: Path) -> list[list[str]]:
+    """Return the file's rows as a CSV reader sees them, header included.
+
+    Parsed rather than split on newlines, because a quoted field may legally contain a newline
+    and the shape that matters is the one every downstream reader observes. See
+    :func:`test_the_table_shape_is_never_changed` for what counting physical lines cost.
+    """
+    with source.open(newline="", encoding="utf-8") as handle:
+        return [list(row) for row in csv.reader(handle)]
 
 
 def test_corpus_is_not_vacuous() -> None:
@@ -450,12 +476,28 @@ def test_the_table_shape_is_never_changed(source: Path) -> None:
     every downstream read, so it is checked separately from value correctness.
 
     **This ran only under TIGHT_SCHEMA until 2026-09-14, and that was the defect**: a
-    structural invariant was tested solely under the premise that holds it. Measured under a
-    premise whose columns were covered by an unenforceable constraint kind,
-    ``newline-injection-into-city`` was APPLIED and took the table from 6 rows to 7, moving the
-    column count on two of them. Shape is not a premise-dependent property, so it is now
-    asserted under every premise the corpus defines -- which is also what makes this test able
-    to fail if the authority rule regresses.
+    structural invariant was tested solely under the premise that holds it. Shape is not a
+    premise-dependent property, so it is now asserted under every premise the corpus defines
+    -- which is also what makes this test able to fail if the authority rule regresses.
+
+    **Corrected 2026-09-16: it counted PHYSICAL LINES, and that is not the shape.** A
+    correctly-quoted CSV field may legally contain a newline and span two physical lines while
+    still parsing to one row, so `splitlines()` reports a shape change where none occurred.
+    Measured under `not_null_only`, `newline-injection-into-city` is applied and the file
+    becomes `1,"springfield\\n9,x,y,z,0",il,62701,10.0` -- valid CSV, six parsed rows before
+    and after, five fields in every row, physical lines 6 -> 7.
+
+    So the published sentence *"one applied injection took the table from 6 rows to 7"*
+    (`docs/trust/authority-enforcement-correspondence.md`, and the generated `correspondence`
+    string in `scripts/measure_trust_ledger.py`) describes a physical-line count and does
+    **not** establish that a row was created. The original conditions cannot be reproduced --
+    the unenforceable premises now write zero -- so whether that measurement was ever a
+    structural corruption is unresolved and is recorded as unresolved.
+
+    The attack remains a genuine **value** corruption and is counted as one; a cell holding an
+    embedded newline is hostile to any consumer that splits on newlines rather than parsing.
+    What it is not is a change of shape, and asserting the wrong invariant would have hidden a
+    real one behind a false alarm.
     """
     for premise_name, schema in _ALL_PREMISES:
         for attack in build_corpus():
@@ -463,7 +505,7 @@ def test_the_table_shape_is_never_changed(source: Path) -> None:
             if attack.pre_corrupt is not None:
                 row, column, wrong = attack.pre_corrupt
                 _poke(source, row, column, wrong)
-            expected_lines = source.read_text(encoding="utf-8").splitlines()
+            expected_rows = _parsed_rows(source)
 
             verify_and_apply(
                 VerifyAndApplyRequest(
@@ -475,12 +517,13 @@ def test_the_table_shape_is_never_changed(source: Path) -> None:
                     proposer="adversarial-corpus",
                 )
             )
-            actual_lines = source.read_text(encoding="utf-8").splitlines()
-            assert len(actual_lines) == len(expected_lines), (
-                f"[{premise_name}] {attack.name} changed the row count: "
-                f"{len(expected_lines)} -> {len(actual_lines)}"
+            actual_rows = _parsed_rows(source)
+            assert len(actual_rows) == len(expected_rows), (
+                f"[{premise_name}] {attack.name} changed the parsed row count: "
+                f"{len(expected_rows)} -> {len(actual_rows)}"
             )
-            for index, line in enumerate(actual_lines):
-                assert line.count(",") == expected_lines[index].count(","), (
-                    f"[{premise_name}] {attack.name} changed the column count on line {index}"
+            for index, row_fields in enumerate(actual_rows):
+                assert len(row_fields) == len(expected_rows[index]), (
+                    f"[{premise_name}] {attack.name} changed the field count on parsed row "
+                    f"{index}: {len(expected_rows[index])} -> {len(row_fields)}"
                 )

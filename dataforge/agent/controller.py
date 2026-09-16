@@ -47,6 +47,7 @@ from dataforge.agent.policy import AgentObservation, Policy, ResidualIssue, make
 from dataforge.agent.scratchpad import Scratchpad
 from dataforge.detectors import run_all_detectors
 from dataforge.detectors.base import Issue, Schema
+from dataforge.domain.premise import authoritative_columns
 from dataforge.domain.vocabulary import CONSTRAINT_CHECKABLE_DETECTORS
 from dataforge.engine.repair import (
     CandidateFix,
@@ -54,7 +55,6 @@ from dataforge.engine.repair import (
     RepairReceipt,
     VerifiedFix,
     apply_transaction,
-    authoritative_columns,
     propose_repairs,
     strength_for_fix,
     verification_strength_for,

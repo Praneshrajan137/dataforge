@@ -48,22 +48,24 @@ from typing import Any
 
 from dataforge.attestation import (
     ATTESTATION_VERSION,
+    CLOSED_VOCABULARIES,
     PREDICATE_TYPE,
     REQUIRED_PREDICATE_FIELDS,
     REQUIRED_TOOL_FIELDS,
     STATEMENT_TYPE,
 )
-from dataforge.domain.vocabulary import (
-    REVIEW_REASONS,
-    SAFETY_VERDICTS,
-    VERIFICATION_STRENGTHS,
-    VERIFIER_VERDICTS,
-)
+from dataforge.domain.premise import PREMISE_FORMAT
+
+# No vocabulary is imported by name any more. Every closed set arrives through
+# CLOSED_VOCABULARIES, so this generator cannot know about four of them and miss three.
 
 REPO = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = REPO / "specs" / "repair_attestation.schema.json"
 
 _SHA256 = {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+
+#: A sorted array of column names, the shape of the premise's four set-valued fields.
+_COLUMN_NAMES: dict[str, Any] = {"type": "array", "items": {"type": "string"}}
 
 
 def _digest_block(description: str) -> dict[str, Any]:
@@ -83,6 +85,28 @@ def _digest_block(description: str) -> dict[str, Any]:
 
 def build_schema() -> dict[str, Any]:
     """Return the JSON Schema, with every enum and required field derived."""
+    projected: set[str] = set()
+
+    def closed(key: str) -> dict[str, Any]:
+        """Project one closed vocabulary the normative verifier enforces.
+
+        Recording each projection is what lets this generator REFUSE below when a vocabulary the
+        verifier enforces would go unpublished. Before 2026-09-16 this module hand-enumerated four
+        vocabularies while ``_check_vocabulary`` enforced seven, so ``provenance`` and
+        ``independent_verification`` were published nowhere -- and SPEC section 6.2's claim that the
+        vocabularies are "published as enums in the JSON Schema" was false for the one vocabulary a
+        committed vector tests. A clean-room implementation obeying section 7's "MUST fail closed on
+        anything unrecognised" therefore rejected 20 of 26 vectors
+        (docs/trust/specification-sufficiency.md).
+        """
+        members = CLOSED_VOCABULARIES.get(key)
+        if members is None:
+            raise SystemExit(
+                f"{key!r} is not a closed vocabulary in dataforge.attestation.CLOSED_VOCABULARIES"
+            )
+        projected.add(key)
+        return {"type": "string", "enum": sorted(members)}
+
     witness = {
         "type": "object",
         "description": (
@@ -149,10 +173,9 @@ def build_schema() -> dict[str, Any]:
             "old_value": {"type": ["string", "null"]},
             "new_value": {"type": ["string", "null"]},
             "detector_id": {"type": ["string", "null"]},
-            "provenance": {"type": "string", "minLength": 1},
+            "provenance": {"minLength": 1, **closed("fixes[].provenance")},
             "verification_strength": {
-                "type": "string",
-                "enum": sorted(VERIFICATION_STRENGTHS),
+                **closed("fixes[].verification_strength"),
                 "description": (
                     "Re-derived by the verifier from provenance and column authority. A "
                     "recorded value stronger than the derivation is a REJECT; a recorded "
@@ -178,7 +201,7 @@ def build_schema() -> dict[str, Any]:
                 },
             },
             "produced_at": {"type": "string", "format": "date-time"},
-            "mode": {"type": "string", "enum": ["dry_run", "apply"]},
+            "mode": closed("mode"),
             "applied": {"type": "boolean"},
             "reversible": {"type": "boolean"},
             "source": _digest_block("The pre-repair artifact."),
@@ -209,8 +232,145 @@ def build_schema() -> dict[str, Any]:
                             "The constraints embedded IN FULL, not by reference. A digest and "
                             "an id list are dangling pointers: a verifier must be able to read "
                             "what a fix was proven against without fetching anything, which is "
-                            "what makes offline verification possible."
+                            "what makes offline verification possible. ADVISORY as of 2026-09-16: "
+                            "this is the schema file as authored, for a human to read, and "
+                            "`constraints_present` tests only that it is non-empty. The field a "
+                            "verifier recomputes authority from is `premise`."
                         )
+                    },
+                    "premise": {
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "required": ["premise_format"],
+                                "properties": {
+                                    "premise_format": {
+                                        "type": "string",
+                                        "const": PREMISE_FORMAT,
+                                    },
+                                    "columns": {
+                                        "type": "object",
+                                        "additionalProperties": {"type": "string"},
+                                    },
+                                    "pii_columns": _COLUMN_NAMES,
+                                    "primary_key_columns": _COLUMN_NAMES,
+                                    "not_null_columns": _COLUMN_NAMES,
+                                    "unique_columns": _COLUMN_NAMES,
+                                    "functional_dependencies": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "required": ["determinant", "dependent"],
+                                            "additionalProperties": False,
+                                            "properties": {
+                                                "determinant": {
+                                                    "type": "array",
+                                                    "minItems": 1,
+                                                    "items": {"type": "string"},
+                                                },
+                                                "dependent": {"type": "string"},
+                                            },
+                                        },
+                                    },
+                                    "accepted_values": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "required": ["column", "values"],
+                                            "additionalProperties": False,
+                                            "properties": {
+                                                "column": {"type": "string"},
+                                                "values": {
+                                                    "type": "array",
+                                                    "minItems": 1,
+                                                    "items": {"type": "string"},
+                                                },
+                                            },
+                                        },
+                                    },
+                                    "regex_constraints": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "required": ["column", "pattern"],
+                                            "additionalProperties": False,
+                                            "properties": {
+                                                "column": {"type": "string"},
+                                                "pattern": {"type": "string"},
+                                            },
+                                        },
+                                    },
+                                    "relationships": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "required": [
+                                                "column",
+                                                "reference",
+                                                "reference_column",
+                                            ],
+                                            "additionalProperties": False,
+                                            "properties": {
+                                                "column": {"type": "string"},
+                                                "reference": {"type": "string"},
+                                                "reference_column": {"type": "string"},
+                                            },
+                                        },
+                                    },
+                                    "domain_bounds": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "required": ["column"],
+                                            "additionalProperties": False,
+                                            "properties": {
+                                                "column": {"type": "string"},
+                                                "min_value": {"type": ["number", "null"]},
+                                                "max_value": {"type": ["number", "null"]},
+                                                "inclusive_min": {"type": "boolean"},
+                                                "inclusive_max": {"type": "boolean"},
+                                            },
+                                        },
+                                    },
+                                    "aggregate_dependencies": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "required": [
+                                                "source_column",
+                                                "target_column",
+                                                "aggregate",
+                                            ],
+                                            "additionalProperties": False,
+                                            "properties": {
+                                                "source_column": {"type": "string"},
+                                                "target_column": {"type": "string"},
+                                                "aggregate": {
+                                                    "type": "string",
+                                                    "enum": ["avg", "sum"],
+                                                },
+                                                "group_by": {
+                                                    "type": "array",
+                                                    "items": {"type": "string"},
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                                "additionalProperties": False,
+                                "description": (
+                                    "The declared schema authority was computed from, in the "
+                                    "canonical premise format of SPEC section 6.4.1. This is what "
+                                    "`authority_is_entailed` recomputes `authoritative_columns` "
+                                    "from, so the authority claim is arithmetic a reader can "
+                                    "repeat rather than an assertion a reader must accept. "
+                                    "`additionalProperties: false` is load-bearing at every level: "
+                                    "a premise carrying a constraint this format cannot express "
+                                    "would confer authority in-process while understating it here."
+                                ),
+                            },
+                            {"type": "null"},
+                        ]
                     },
                 },
             },
@@ -222,16 +382,16 @@ def build_schema() -> dict[str, Any]:
                     "properties": {
                         "row": {"type": "integer", "minimum": 0},
                         "column": {"type": "string"},
-                        "review_reason": {"type": "string", "enum": sorted(REVIEW_REASONS)},
+                        "review_reason": closed("held[].review_reason"),
                     },
                 },
             },
             "verdicts": {
                 "type": "object",
                 "properties": {
-                    "verifier": {"type": "string", "enum": sorted(VERIFIER_VERDICTS)},
-                    "safety": {"type": "string", "enum": sorted(SAFETY_VERDICTS)},
-                    "independent_verification": {"type": ["string", "boolean", "null"]},
+                    "verifier": closed("verdicts.verifier"),
+                    "safety": closed("verdicts.safety"),
+                    "independent_verification": closed("verdicts.independent_verification"),
                 },
             },
             "journal": {
@@ -242,7 +402,15 @@ def build_schema() -> dict[str, Any]:
                 },
             },
             "revert_command": {"type": ["string", "null"]},
-            "model": {"type": ["string", "null"]},
+            "model": {
+                "type": ["object", "null"],
+                "description": (
+                    "Provider and model identity when any fix is LLM-origin; null otherwise. "
+                    "Declared `string | null` until 2026-09-16, which contradicted both SPEC "
+                    "section 6.2 and `build_attestation`, whose emitted value is `dict(model)`. "
+                    "No vector caught it because every vector sets model to null."
+                ),
+            },
             "limitations": {"type": "array", "items": {"type": "string"}},
             "verification": {
                 "type": "object",
@@ -250,6 +418,19 @@ def build_schema() -> dict[str, Any]:
             },
         },
     }
+
+    # Refuse on the unnameable. Every closed vocabulary the normative verifier enforces must be
+    # published here, or a third party cannot enforce it and this schema's own claim to be the
+    # publication point is false. PRODUCT.md section 1.3 records four earlier instances of a
+    # generator that derived every projected VALUE while hand-enumerating WHICH vocabularies to
+    # project; this is the assertion that stops a fifth.
+    unpublished = sorted(set(CLOSED_VOCABULARIES) - projected)
+    if unpublished:
+        raise SystemExit(
+            f"UNPUBLISHED CLOSED VOCABULARIES: {unpublished}. The normative verifier enforces "
+            "these but this schema does not publish them, so an independent implementation "
+            "cannot enforce them either. Project each one with closed('<key>')."
+        )
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

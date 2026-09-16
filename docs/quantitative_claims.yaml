@@ -1780,3 +1780,100 @@ claims:
       Decimals with two or more fractional digits, fenced code excluded, integers and one-place
       decimals not counted. K2 required publishing the false-positive classes rather than a
       ratio over a junk denominator: 8 arXiv ids were excluded as a declared class.
+  - id: spec_sufficiency_arm_a_agreement
+    doc: docs/trust/specification-sufficiency.md
+    artifact: eval/results/specification_sufficiency.json
+    pointer: /arms/armA/baseline_agreement_rate
+    format: "{:.4f}"
+    expect: "0.6538"
+    context: "agreement rate"
+    note: >-
+      A clean-room Java verifier built from specs/SPEC_repair_attestation.md alone, run over the
+      26 vectors committed at measurement time. Five of its nine disagreements are documents it
+      ACCEPTS that the reference verifier rejects, four of them attestations whose own witness
+      arithmetic refutes the write they accompany.
+  - id: spec_sufficiency_arm_b_agreement
+    doc: docs/trust/specification-sufficiency.md
+    artifact: eval/results/specification_sufficiency.json
+    pointer: /arms/armB/baseline_agreement_rate
+    format: "{:.4f}"
+    expect: "0.1154"
+    context: "agreement rate"
+    note: >-
+      The same exercise given the published JSON Schema as well. It scores FIVE TIMES WORSE than
+      the prose-only arm because it obeyed section 7's instruction to fail closed on unrecognised
+      values, and Provenance was published nowhere. Faithfulness was anti-correlated with
+      conformance; that is the finding, not the rate.
+  - id: spec_sufficiency_arm_c_agreement
+    doc: docs/trust/specification-sufficiency.md
+    artifact: eval/results/specification_sufficiency.json
+    pointer: /arms/armC/baseline_agreement_rate
+    format: "{:.4f}"
+    expect: "0.9615"
+    context: "agreement rate"
+    note: >-
+      Arm C is Arm B's inputs AFTER the amendments -- the same markdown-plus-schema class, over the
+      same 26 vectors. 0.1154 to 0.9615 is the measured effect of the fixes. It is not 1.0000, and
+      the pre-registered P11 said all vectors, so P11 is refuted by exactly one residual defect:
+      the specification did not say whether a signature failure stops the remaining checks.
+  - id: spec_sufficiency_arm_c_full_suite
+    doc: docs/trust/specification-sufficiency.md
+    artifact: eval/results/specification_sufficiency.json
+    pointer: /arms/armC/agreement_rate
+    format: "{:.4f}"
+    expect: "0.9667"
+    context: "29 of 30"
+    note: >-
+      Arm C over the full suite including the four vectors added after arms A and B were measured.
+      Quoted alongside the baseline figure, never instead of it.
+
+  # --- Per-kind authority, 2026-09-16 -------------------------------------------------------
+  # Registered because these four numbers ARE the finding: eight constraint kinds clear one
+  # authority bar with tenfold different measured power. An unregistered table would let any of
+  # them drift. Pre-registration: eval/preregistration/per_kind_authority.md.
+
+  - id: per_kind_accepted_values_corruptions
+    doc: docs/trust/per-kind-authority.md
+    artifact: eval/results/trust_ledger_adversarial.json
+    pointer: /premises/accepted_values_only/discriminable/corruptions
+    format: "{:d}"
+    expect: "0"
+    context: "| `accepted_values_only` |"
+    note: >-
+      P4. One kind, declared alone, reproduces the entire four-kind tight bundle: zero
+      corruptions with the single legitimate repair intact.
+
+  - id: per_kind_not_null_corruptions
+    doc: docs/trust/per-kind-authority.md
+    artifact: eval/results/trust_ledger_adversarial.json
+    pointer: /premises/not_null_only/discriminable/corruptions
+    format: "{:d}"
+    expect: "9"
+    context: "| `not_null_only` |"
+    note: >-
+      P1. not_null confers full write authority and can reject only the empty string, so it
+      admits 9 of the 14 attacks. It is the most abundant real-world constraint.
+
+  - id: per_kind_unique_corruptions
+    doc: docs/trust/per-kind-authority.md
+    artifact: eval/results/trust_ledger_adversarial.json
+    pointer: /premises/unique_only/discriminable/corruptions
+    format: "{:d}"
+    expect: "10"
+    context: "| `unique_only` |"
+    note: >-
+      P3 and P6. The worst premise measured, and a third independent route to 10 of 14 after
+      the retired `str` premise and the two unenforceable-kind premises. Unlike those, this
+      kind is enforceable, checked by both verifiers, and live today.
+
+  - id: per_kind_ddl_typical_corruptions
+    doc: docs/trust/per-kind-authority.md
+    artifact: eval/results/trust_ledger_adversarial.json
+    pointer: /premises/ddl_typical/discriminable/corruptions
+    format: "{:d}"
+    expect: "9"
+    context: "| `ddl_typical` "
+    note: >-
+      P5. What a DDL importer emits for an ordinary production table -- not_null plus a primary
+      key -- corrupts 9 of 14. This is why the importer work is constrained by evidence rather
+      than expanded: importing more constraint kinds is not monotonically good.

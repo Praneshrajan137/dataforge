@@ -85,6 +85,33 @@ throughout, because **it ran only under `TIGHT_SCHEMA`** — a structural invari
 under the premise that upholds it. Shape is not a premise-dependent property. It is now asserted
 under every premise the corpus defines.
 
+> **Correction, 2026-09-16 — the row-count claim above is withdrawn.**
+>
+> The two sentences in this section report a **physical line count**. The assertion that produced
+> them called `splitlines()` and named the result the table's shape, and those are not the same
+> thing: a quoted CSV field may legally contain a newline and span two physical lines while still
+> parsing to exactly one row.
+>
+> The same attack, applied under `not_null_only` and read back with a CSV reader, produces
+> `1,"springfield\n9,x,y,z,0",il,62701,10.0` — valid CSV, **6 parsed rows before and 6 after, five
+> fields in every row**. Physical lines do go 6 → 7. Nothing else moves.
+>
+> So `newline-injection-into-city` is a **value** corruption — a cell holding an embedded newline is
+> hostile to any consumer that splits on newlines instead of parsing — and it is counted as one. It
+> is not a demonstrated change of shape, and this document should not have said it was.
+>
+> Whether the original 2026-09-14 measurement was ever a structural corruption is **unresolved**.
+> Reproducing it needs a premise where an unenforceable kind confers authority, and those premises
+> now write zero. The writer uses minimal quoting, which has always quoted embedded newlines, so a
+> real unquoted row split is implausible — but that is an inference, not a measurement.
+>
+> The invariant now asserts parsed row count and per-row field count. Correctly measured, the shape
+> invariant **holds under all nine premises**, including the two that corrupt 9 and 10 cells — a
+> stronger claim than the one withdrawn here. The reason this section still stands, minus its
+> arithmetic, is that the underlying finding is intact: the invariant ran under one premise, and a
+> gate nobody has seen fail on a case it newly covers has not been shown to cover it. Detail:
+> `eval/preregistration/per_kind_authority.md`, amendment 1.
+
 ### Why N-version diversity could not catch it
 
 Both verifiers returned `ACCEPT` on every one of these proposals, so they **agreed**, and

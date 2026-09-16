@@ -9,8 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from dataforge.calibration import AbstentionPolicy, corrector_default_policy
 from dataforge.detectors import run_all_detectors
 from dataforge.detectors.base import Issue, Schema
+from dataforge.domain.premise import authoritative_columns
 from dataforge.engine.repair import (
-    authoritative_columns,
     partition_auto_apply,
     propose_repairs,
 )
