@@ -32,6 +32,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 REPAIR = PROJECT_ROOT / "dataforge" / "engine" / "repair.py"
 VOCABULARY = PROJECT_ROOT / "dataforge" / "domain" / "vocabulary.py"
+#: Added 2026-09-16. `columns_named_by_constraint_kind` and `authoritative_columns` moved out of
+#: `engine/repair.py` into the domain layer, so that the attestation verifier can apply the authority
+#: rule without importing the repair engine. The anchor below moved with them.
+PREMISE = PROJECT_ROOT / "dataforge" / "domain" / "premise.py"
 
 # The corpus alone cannot kill a mutant in the write PRIMITIVE. With no authoritative
 # schema, proposals are partitioned into "held" before any write is attempted, so
@@ -90,7 +94,16 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         name="authority is granted over every column",
         defence="column-scoped authority",
-        path=REPAIR,
+        path=PREMISE,
+        # Retargeted 2026-09-16, the SECOND time this mutant's home has moved, and the mechanism
+        # caught it the same way both times. `columns_named_by_constraint_kind` moved from
+        # `engine/repair.py` to `domain/premise.py` so the attestation verifier could apply the
+        # authority rule without importing the repair engine; the anchor text was unchanged but
+        # `path` still named the old file, so the replace matched nothing. The harness reported
+        # "NO-OP ... (repair.py unchanged)" and refused to count it as a kill -- which is the whole
+        # value of distinguishing a no-op from a survivor. Found by the backend gate on the branch
+        # that moved the function, before it reached main.
+        #
         # Anchor refreshed 2026-08-28. It had read `covered: set[str] = set(schema.columns)`,
         # which no longer exists: `authoritative_columns` was narrowed to cover a column only
         # when the schema declares a DISCRIMINATING type for it. So the mutant was a NO-OP and
