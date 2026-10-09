@@ -2,8 +2,11 @@ name: Playground monitor
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "*/15 * * * *"
+  # NOTE: Schedule disabled — the playground at
+  # dataforge-playground.grayflower-1f6e0578.eastus2.azurecontainerapps.io
+  # is not deployed. Re-enable when the playground is live again.
+  # schedule:
+  #   - cron: "*/15 * * * *"
 
 concurrency:
   group: playground-monitor
