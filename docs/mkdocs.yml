@@ -57,6 +57,7 @@ nav:
       - Agent Loop: concepts/agent-loop.md
       - Safety: concepts/safety.md
       - SMT Verification: concepts/smt-verification.md
+      - Attestation Verification: attestation-verification.md
       - Causal Root Cause: concepts/causal-root-cause.md
       - Transactions: concepts/transactions.md
   - Detectors: detectors.md

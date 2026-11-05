@@ -89,6 +89,17 @@ nothing) or `date` (narrows, but no verifier can encode it) confers no authority
 otherwise is rejected. The premise format round-trips every `Schema` field. All 15 mutants are killed,
 covering all 13 normative checks, including one that reverts this check to taking the claim on trust.
 
+**Claimed.** Under `--trust-mined-constraints`, the effective authority schema (merging declared and
+mined constraints) is threaded through `RepairPipelineResult.authority_schema` and projected by
+`attest_result` via `premise_to_canonical`, so mined-authority runs emit a portable attestation whose
+embedded `authority.premise` entails `authoritative_columns` and passes all 13 checks of
+`verify_attestation`.
+
+**Claimed.** Check 13 and the DSSE signature short-circuit rule have been verified by a fourth
+clean-room Java verifier (Arm D in `docs/trust/specification-sufficiency.md`), built from
+`specs/SPEC_repair_attestation.md` and `specs/repair_attestation.schema.json` alone, which agreed on
+all 35 of 35 conformance vectors and all 13 normative check names.
+
 **Not claimed — and this is the residual gap.** The check verifies that the claim follows from the
 **published** premise, not that the published premise is the one the operator repaired against. A
 producer that embeds a premise it never used produces a self-consistent document. Binding the premise
@@ -102,17 +113,7 @@ than verify it and imply otherwise, the limitation is stated in specification se
 options were to verify it while naming that limit or to remove it; publishing the limit is the first.
 
 **Not claimed.** That this improves the engine's behaviour at all. Nothing about which writes are
-permitted has changed. What changed is whether a third party can check the claim afterwards — and one
-capability was **withdrawn**: under `--trust-mined-constraints` the attestation is now withheld,
-because authority there comes from a merged schema whose mined half is in no file, so any premise
-published would understate its own authority basis. Recovering it needs the effective schema threaded
-through the receipt.
-
-**Not claimed.** That the specification is now sufficient for a clean-room implementation. The last
-measurement of that put two independent verifiers at 17 of 26 and 3 of 26
-(`docs/trust/specification-sufficiency.md`), and check 13 has not been through that test. The
-allowlists are published verbatim precisely because a clean-room reader working from the older prose
-would have over-credited `date`.
+permitted has changed; what changed is whether a third party can check the authority claim afterwards.
 
 ## Reproducing it
 

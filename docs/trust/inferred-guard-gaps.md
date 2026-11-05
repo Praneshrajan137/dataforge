@@ -65,9 +65,10 @@ So for gap 7 the declared specification was accepted, granted write authority ov
 it named, and then never checked. That was worse than not accepting it, because the operator
 had reason to believe the column was constrained. Measured: adding a relationship on every
 column to the adversarial corpus's permissive premise -- one field, nothing else changed -- took
-it from 0 writes to **11**, corrupting **10 of 14** discriminable attacks, and one applied
-injection took the table from 6 rows to 7
-([authority-enforcement-correspondence.md](authority-enforcement-correspondence.md)).
+it from 0 writes to **11**, corrupting **10 of 14** discriminable attacks (an earlier clause here
+that one applied injection took the table from 6 rows to 7 is withdrawn: it counted `splitlines()`
+on a quoted CSV newline while the parsed row and column counts were unchanged; see
+[authority-enforcement-correspondence.md](authority-enforcement-correspondence.md)).
 
 **What actually closes gap 7 today: nothing, and it no longer pretends otherwise.** Declaring a
 relationship or an aggregate dependency now confers **no write authority**

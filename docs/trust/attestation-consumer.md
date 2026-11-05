@@ -90,3 +90,13 @@ integrity property that makes it safe; what is missing is the decision to publis
   maxim's verdict is unchanged and should be quoted unchanged: this is a log line. The work in
   [specification-sufficiency.md](specification-sufficiency.md) made it a *correct* log line, which is
   a precondition for it becoming a product and is not the same thing.
+
+## Update (2026-10-21): Auditor documentation and weak-authority boundary disclosure
+
+Two of the internal gaps named above are now closed in the shipped documentation and verifier output:
+
+- **Third-party auditor documentation (`docs/docs/attestation-verification.md`)**: `docs/docs/` now carries a dedicated auditor guide explaining what a recipient or auditor can conclude in each of the three verification modes (with `--data` and `--public-key-hex`, with `--data` only, and attestation-only), stating explicitly that `data_identity: skipped` means the verifier has not seen the table bytes and proves only internal coherence of the statement.
+- **Per-kind authority boundary disclosure (`weak_only_columns`)**: `dataforge/domain/vocabulary.py` partitions `ENFORCEABLE_CONSTRAINT_KINDS` into `STRONG_AUTHORITY_CONSTRAINT_KINDS` and `WEAK_AUTHORITY_CONSTRAINT_KINDS` (`not_null_columns`, `unique_columns`), and both the Python and TypeScript verifiers append `weak_only_columns` to the `authority_is_entailed` check detail whenever an authoritative column is covered solely by presence or uniqueness.
+- **Three-language CI conformance (`scripts/ci/attestation_conformance.py`)**: the conformance gate now runs the Python verifier, the TypeScript verifier, and the clean-room Java 17 verifier (`eval/cleanroom/armD/Verify.java`) across all 35 committed vectors.
+
+The external status stated above remains unchanged: no external party has verified an attestation they did not produce.

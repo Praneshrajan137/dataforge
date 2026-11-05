@@ -42,6 +42,74 @@ benchmark still exist.
 
 ---
 
+## 2026-10-29 - Weak-authority disclosure, three-language clean-room conformance, browser attestation parity, and claim-coverage ratchet
+
+**Context**: Four structural asymmetries remained after the 2026-10-20 verification pass:
+(1) `ENFORCEABLE_CONSTRAINT_KINDS` treated all eight enforceable kinds uniformly even though
+`eval/results/trust_ledger_adversarial.json` measured `not_null_columns` (0/14 blocked) and
+`unique_columns` (1/14 blocked) as weak invariants compared to the six value-narrowing kinds;
+(2) `scripts/ci/attestation_conformance.py` enforced two-language parity (Python + TypeScript)
+with a stale `MINIMUM_VECTORS = 26` floor while Clean-Room Java 17 (`eval/cleanroom/armD/Verify.java`)
+ran only outside the conformance gate;
+(3) the Playground backend emitted only the legacy 3-check `certificate` wrapper while the
+independent browser verifier (`playground/web/src/attestation/verify.ts`) was unimported by any UI
+component; and
+(4) `eval/results/claim_coverage.json` stood at `89` bound / `772` unsourced figures (`0.0841`
+bound share), leaving flagship detection and deductive-coverage result documents unbound.
+
+**Alternatives**:
+1. *Strip `not_null_columns` and `unique_columns` out of `ENFORCEABLE_CONSTRAINT_KINDS` outright.* Rejected: both kinds ARE enforced by Z3 and the direct verifier (preventing null wipes and primary-key collisions); conflating "weak single-invariant power" with "unenforced metadata" would misclassify real solver checks and silently demote dbt `not_null`/`unique` contracts without a major-version break.
+2. *Keep all eight kinds in `ENFORCEABLE_CONSTRAINT_KINDS` silently without disclosing weak-only coverage.* Rejected: hides a measured 10-of-14 / 9-of-14 residual corruption exposure from attestation consumers.
+3. *Partition `ENFORCEABLE_CONSTRAINT_KINDS` into `STRONG_AUTHORITY_CONSTRAINT_KINDS` (6 kinds) and `WEAK_AUTHORITY_CONSTRAINT_KINDS` (`not_null_columns`, `unique_columns`), surface `weak_only_columns` in `authority_is_entailed` across verifiers, gate 35-vector conformance across Python + TypeScript + Java 17, wire live client-side `verifyStatement` into the Playground UI, and bind the flagship detection/coverage result documents in `docs/quantitative_claims.yaml`.* Chosen.
+
+**Decision**: Option 3 across all four axes:
+- Formalized `STRONG_AUTHORITY_CONSTRAINT_KINDS` and `WEAK_AUTHORITY_CONSTRAINT_KINDS` in `dataforge/domain/vocabulary.py` (with import-time totality/disjointness guard), projected both sets into `playground/web/src/domain/vocabulary.generated.ts`, added `weak_only_authority_columns(schema)` to `dataforge/domain/premise.py`, wired `WEAK_AUTHORITY_CONSTRAINT_KINDS` into `dataforge/integrations/dbt.py`, and disclosed `; weak_only_columns=[...]` in `authority_is_entailed` across Python and TypeScript.
+- Raised `MINIMUM_VECTORS` to `35` and added Clean-Room Java 17 (`eval/cleanroom/armD/Verify.java`, invoked via `--check` in `scripts/bench/measure_specification_sufficiency.py`) to `scripts/ci/attestation_conformance.py`, paired with the third-party auditor guide `docs/docs/attestation-verification.md`.
+- Attached `AttestationVerificationView` (`ok`, `checks`, `statement`) to `/api/v1/analyze` and `/api/v1/verify-fixes` (`specs/openapi/playground.openapi.json`), wired `AttestationPanel` (`playground/web/src/components/trust.tsx`) to execute `verifyStatement` independently in the browser (isolated in a 4,812 B gzip `attestation` Rollup chunk within the unchanged 161,000 B total JS budget), and rendered skipped checks neutrally rather than with proof colour.
+- Bound 54 sentence-verified claims across `real-error-detection-result.md`, `cell-level-detection-result.md`, `deductive-coverage-result.md`, and `queue-filter-result.md` (plus 5 updated census claims), raising `BOUND` from `89` to `178` (`0.0841` to `0.1630` bound share) and ratcheting `UNSOURCED` down from `772` to `654` in `eval/results/claim_coverage_baseline.json`. Binding exposed and corrected in place four artifact-vs-prose discrepancies (`0.9873` vs `0.987425`, `MissingValue` mislabelled under `t=0.95`, `SemanticDomain` omitted from the `real-error-detection-result.md` frontier table, and retired plurality figures `0.3734`/`0.5618` cited as shipped majority figures `0.2425`/`0.6602` in `deductive-coverage-result.md`).
+
+**Reasoning**: Every claim of authority, cross-language specification sufficiency, client-side verification, and quantitative evidence now rests on an executable check rather than prose convention, and binding the four flagship result documents immediately caught four real prose drifts that allowlist gates could not see.
+
+**Reviewed with**: Three-language conformance gate (`scripts/ci/attestation_conformance.py --check`), four-harness mutation suite, Playwright E2E + `axe-core`, and `scripts/ci/claim_coverage.py --check`.
+
+**Reversal criteria**: If a future major contract version (`repair_contract_v3` / `RepairAttestation/v2`) promotes strong-only authority to a normative requirement for `proven` writes rather than an explicit `weak_only_columns` disclosure, bump the predicate version and update vectors 31-35 accordingly.
+
+---
+
+## 2026-10-20 - Retraction of the "6 rows to 7" structural-corruption clause and closure of the 8-of-8 per-kind authority matrix
+
+**Context**: The 2026-09-14 entry below recorded that applying `newline-injection-into-city` under an
+unenforceable premise *"changed the table's shape, 6 rows to 7"*. When P7 of
+`eval/preregistration/per_kind_authority.md` re-tested that prediction under `not_null_only` on
+2026-09-16 using `csv.reader` rather than `str.splitlines()`, the parsed table had **6 rows and 5
+fields per row** both before and after the write: the CSV writer quotes embedded newlines, so only
+the physical line count rose. The 10-of-14 value-corruption finding stands unchanged; the
+structural-shape half is withdrawn across `PRODUCT.md`, `docs/trust/inferred-guard-gaps.md`, and the
+test suite while leaving the 2026-09-14 entry below untouched per the append-only rule.
+
+**Alternatives**:
+1. *Leave the remaining prose/test sites untouched because `per-kind-authority.md` already noted the withdrawal.* Rejected: five live sites still stated the withdrawn claim without qualification.
+2. *Qualify every live mutable site in place and record the retraction in this append-only log.* Chosen.
+
+**Decision**: Option 2, paired with completing the 8-of-8 per-kind authority isolation matrix in
+`scripts/measure_trust_ledger.py`, freezing all four mutation harnesses (55 mutants) in
+`scripts/ci/gate_population.py`, closing `UNMEASURED_DETECTORS["decimal_shift"]` in
+`scripts/bench/measure_bypass_allowlist.py`, and enabling portable attestations under
+`--trust-mined-constraints`.
+
+**Reasoning**: Every claim in live documentation and gate messages must match the measured artifact,
+and every population policed by a meta-gate (`gate_population.py`, `generate_domain_vocabulary.py`,
+`measure_bypass_allowlist.py`) must be derived and total.
+
+**Reviewed with**: Pre-registered verification protocol (`eval/preregistration/per_kind_authority.md`,
+`eval/preregistration/specification_sufficiency.md`).
+
+**Reversal criteria**: If a CSV writer path is ever found that writes unquoted newlines and splits a
+parsed CSV row, record the reproduction artifact and restore the structural-corruption claim for that
+path.
+
+---
+
 ## 2026-09-14 - Authority must correspond to enforcement: a declaration nothing can check confers no proof
 
 **Context**: `authoritative_columns` granted write authority for **ten** `Schema` constraint kinds

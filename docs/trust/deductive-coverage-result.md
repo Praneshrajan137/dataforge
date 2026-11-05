@@ -178,14 +178,24 @@ harmful, and only an unconditional metric revealed it.
 
 ## Coverage, stated honestly
 
-On hospital the label-free path repairs **0.8861** of all real errors in the table under the default
+On hospital the label-free path repairs **0.8861** of all real errors in the table under the opt-in
 mined premise and **0.7721** under a perfect one -- far higher than anything previously suggested by
 the 1-cell and 1-of-14 figures. But the same path contributes **nothing** on rayyan (no dependency
-survives mining or discovery) and reaches **0.3734** on flights at write precision 0.5618.
+survives mining or discovery) and, under the shipped strict-majority rule, reaches **0.2425** on
+flights at write precision 0.6602.
 
 So there is no single coverage number. Coverage is a joint property of corpus, premise source and
-decision rule, and it ranges from **0.0** to **0.8861** with write precision from **0.5618** to
-**1.0000**. Any product claim that quotes one figure is quoting the corpus it was measured on.
+decision rule, and under the shipped rule it ranges from **0.0** to **0.8861** with write precision
+from **0.6602** to **1.0000**. Any product claim that quotes one figure is quoting the corpus it was
+measured on.
+
+> **CORRECTED 2026-10-21**, found while binding these figures to `docs/quantitative_claims.yaml`.
+> This section previously said the mined premise was the "default" (withdrawn by this document's own
+> 2026-08-25 correction above) and quoted flights at coverage **0.3734**, write precision **0.5618**,
+> with a precision range starting at **0.5618**. Those are the retired **plurality** rule
+> (`write_exposure/by_rule/plurality`); the rule that has shipped since 2026-08-25 is
+> `by_rule/majority`, at 0.2425 and 0.6602. The plurality figures stay in the headline table as the
+> counterfactual they are.
 
 ## Limits
 
@@ -220,7 +230,8 @@ decision rule, and it ranges from **0.0** to **0.8861** with write precision fro
 ## What this authorises
 
 **Authorises** the claim that the label-free FD repair path has measured, unconditional write
-precision between 0.5618 and 1.0000 on retained ground truth, and that its corruption count is
+precision between 0.6602 and 1.0000 on retained ground truth under the shipped strict-majority rule
+(0.5618 under the retired plurality rule; corrected 2026-10-21), and that its corruption count is
 governed by premise provenance rather than by anything the write gate currently inspects.
 
 **Authorises** the strict-majority rule in `_deterministic_choice`, now shipped: zero measured cost

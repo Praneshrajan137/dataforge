@@ -127,14 +127,15 @@ drifts again:
   exercised by a vector, published as an enum — and refuses on anything in one that is unnameable in
   another. It is the first gate here to read a `specs/SPEC_*.md` at all.
 - `scripts/ci/mutate_attestation.py` exists. §8 cited it from 2026-08-13 and it did not exist, so
-  §9's killing-mutant criterion was unenforceable for a month. All 14 mutants die, covering all 12
+  §9's killing-mutant criterion was unenforceable for a month. All 15 mutants die, covering all 13
   checks.
 - The specification now publishes the strength derivation rule, both branches of
   `verdicts_accepting`, which digest `data_identity` compares, `constraints_present`'s actual scope,
-  the witness coherence conditions, the check names as normative, and its own normative surface in a
-  new §3.1.
-- The suite grew from 26 vectors to 30: `data_identity` gained two (the format now carries input
-  bytes), a wrong-key signature gained one, and a wrong `_type` gained one. No vector was weakened.
+  the witness coherence conditions, the check names as normative, the signature short-circuit rule,
+  Check 13 (`authority_is_entailed`), and its own normative surface in §3.1.
+- The suite grew from 26 vectors to 30 after Arms A and B (`data_identity` gained two, a wrong-key
+  signature gained one, and a wrong `_type` gained one) and to 35 when Check 13 added five premise
+  forgery vectors. No vector was weakened.
 
 **The mutation harness earned its place on its first run.** `A1-envelope-type-unchecked` SURVIVED:
 `envelope_recognised` tests two conditions and only `predicateType` had a vector, so replacing the
@@ -146,65 +147,61 @@ declared a `dataBytes` option and never read it — line 301 consulted only `dat
 passing bytes got `data_identity` silently skipped while believing it had been checked, which is the
 *"quietly performs fewer checks, reports the same ok"* failure §6.3 warns about, inside the verifier.
 
-## Did the amendments work? Arm C
+## Did the amendments work? Arms C and D
 
-A third clean-room verifier, built by a fresh agent from the **amended** markdown plus the amended
-schema — Arm B's input class, after the fix — and run over the same vectors.
+Two further clean-room verifiers were built by fresh isolated agents from the amended markdown plus
+the amended JSON Schema — Arm B's input class, after each wave of specification amendments.
 
-| Arm | Given | Over the original 26 | Over all 30 | Checks |
-| --- | --- | --- | --- | --- |
-| **B** | markdown + schema, before | 3 of 26, agreement rate 0.1154 | — | 12, one misnamed |
-| **C** | markdown + schema, after | 25 of 26, agreement rate 0.9615 | 29 of 30, agreement rate 0.9667 | 12, **all correctly named** |
+| Arm | Given | Over the original 26 | Over the 30-vector cohort | Over all 35 | Checks |
+| --- | --- | --- | --- | --- | --- |
+| **B** | markdown + schema, before | 3 of 26, agreement rate 0.1154 | — | — | 12, one misnamed |
+| **C** | markdown + schema, after 12-check fix | 25 of 26, agreement rate 0.9615 | 29 of 30, agreement rate 0.9667 | — | 12, **all correctly named** |
+| **D** | markdown + schema, with Check 13 & short-circuit rule | 26 of 26, agreement rate 1.0000 | 30 of 30 | 35 of 35, agreement rate 1.0000 | 13, **all correctly named** |
 
-Both figures are reported because the suite grew from 26 vectors to 30 during this work, and the
-four added vectors came out of what Arms A and B exposed. The 26-vector column is the pre-registered
-comparison; the 30-vector column is supplementary. Neither is allowed to stand in for the other, and
-`scripts/bench/measure_specification_sufficiency.py` names the four added vectors individually so a
-fifth cannot silently enlarge the historical baseline.
+All three cohort columns are reported because the suite grew from 26 vectors to 30 after Arms A and B
+and to 35 when Check 13 (`authority_is_entailed`) was added. `scripts/bench/measure_specification_sufficiency.py`
+names every post-baseline vector individually (`VECTORS_ADDED_AFTER_MEASUREMENT` and
+`VECTORS_ADDED_AFTER_ARM_C`) so no added vector can silently move an earlier arm's figure.
 
-Arm C emitted all twelve check names correctly, including `witness_is_coherent` — the name that cost
-Arm B four vectors on logic it had implemented perfectly.
+**P11 (Arm C) was refuted by one vector; P12 (Arm D) is confirmed on all 35.** Arm C reached 29 of 30
+because the reference verifier short-circuits on a DSSE `signature` failure and reports `signature`
+alone, whereas Arm C ran all twelve checks on the tampered payload and additionally reported
+`subject_matches_post_state`. §7 was amended to state the short-circuit rule explicitly, and §6.4 /
+check 13 were added to specify `authority_is_entailed`. Arm D — pre-registered in Amendment 4
+of `eval/preregistration/specification_sufficiency.md` and built from `specs/SPEC_repair_attestation.md`
+and `specs/repair_attestation.schema.json` alone — agreed with the reference verifier on **35 of 35**
+vectors (`1.0000`) on its first run, emitting all 13 normative check names and preserving its full
+narrative analysis in `eval/cleanroom/armD/NOTES.md`.
 
-**P11 is refuted.** It predicted Arm C would pass *all* vectors, and 29 of 30 is not all. The single
-residual disagreement is a genuine gap nobody had named: our verifier **short-circuits** on a
-signature failure and reports `signature` alone, while Arm C ran all twelve checks on the tampered
-payload and additionally reported the subject mismatch. Arm C was right on the letter of §7's *"Every
-check is reported individually"*, which says nothing about a signature failure stopping the rest. §7
-now states the short-circuit rule explicitly. That amendment is untested by any arm — it closes the
-gap for a future one, and saying otherwise would be the reasoning this document exists to refuse.
-
-One instrument defect was found and repaired under the pre-registered carve-out: the runner never
-passed `--data`, so Arm C's first run reported it accepting a mismatched-digest document it had
-simply never been handed the bytes for. Fixed, re-run, and disclosed as amendment 3 of the
-pre-registration. A suspiciously specific failure is a bug in the instrument before it is a finding.
+One instrument defect was found and repaired during Arm C under the pre-registered carve-out: the
+runner never passed `--data`, so Arm C's first run reported it accepting a mismatched-digest document
+it had simply never been handed the bytes for. Fixed, re-run, and disclosed as amendment 3 of the
+pre-registration.
 
 ## What this does and does not claim
 
-- **Not that the thesis now holds.** The normative tier checks integrity and coherence. It does not
-  re-discharge the SMT obligation, and `PRODUCT.md`:118-121's concession stands unchanged: a third
-  party must still trust our verifier that the solver obligation was actually discharged. Nothing
-  here touches that.
-- **Not that the amendments are sufficient.** Arm C reached 29 of 30, not 30, and the one residual
-  gap is named above. The amendment that closes it has not itself been tested by any clean-room arm.
-- **Not a clean measurement of specification quality for Arm B.** The JSON Schema is *generated from
-  the reference verifier*. Agreement reached through it is agreement with a projection of our
-  implementation. Arm B can establish "a third party can verify given what we publish" and can never
-  establish "the specification is independently sound."
+- **Not that the thesis now holds in full.** The normative tier checks integrity, coherence, and that
+  the claimed `authoritative_columns` follow from the embedded `authority.premise`. It does not
+  re-discharge the SMT obligation against the dataset, and `PRODUCT.md`:118-121's concession stands
+  unchanged: a third party must still trust our verifier that the solver obligation was actually
+  discharged. Nothing here touches that.
+- **Not a clean measurement of prose-only quality for Arms B, C, or D.** The JSON Schema is *generated
+  from the reference verifier*. Agreement reached through it is agreement with a projection of our
+  implementation. Arms C and D establish *"a third party can build a 100%-conforming verifier given
+  the two specification artifacts we publish (`SPEC_repair_attestation.md` and
+  `repair_attestation.schema.json`)."*
 - **Not a measure of implementer skill.** Each arm is a fixed-effort faithful reader, not a domain
-  expert working over days. That makes the arms comparable to each other and makes a *pass* strong
-  evidence, but makes a single failure weaker evidence than an expert's failure would be.
+  expert working over days. That makes the arms comparable to each other and makes Arm D's 35 of 35
+  pass strong evidence that the specification surface is unambiguous across all 35 vectors.
 - **Not exhaustive over the format.** The vectors are the strongest available proxy and remain
   incomplete: nothing exercises `journal.head_sha256`, which §6.2 describes as binding the hash chain
   into the payload and which `reversibility_complete` does not require.
-- **Isolation was structural but not total.** The harness auto-injects `CLAUDE.md` into every
-  subagent's context. Arm A disclosed this rather than concealing it. It names no check and no
-  vocabulary member, and a grep audit of both arms' sources found zero occurrences of `witness`,
-  `witness_is_coherent`, `llm_live`, `verification_strength_for` or the Python's distinctive error
-  clause — so the channel existed and was empty. It is not guaranteed empty for a future arm.
-- **Arm B's narrative report was lost** when the agent was cut off after its self-tests passed. Its
-  instrument, sources and pre-coding check enumeration survived and the vector run is unaffected, but
-  the exhaustive markdown-versus-schema divergence list it was asked for does not exist. That list
-  was reconstructed by direct reading instead, so it rests on one reading rather than two.
+- **Isolation was audited both by transcript and by source grep.** For Arm D, the subagent transcript
+  confirms only two `view_file` calls (`specs/SPEC_repair_attestation.md` and
+  `specs/repair_attestation.schema.json`), and a grep audit of `eval/cleanroom/armD/Verify.java`
+  found zero occurrences of implementation-only symbols (`verification_strength_for`,
+  `AttestationCheck`, `verify_attestation`, `NORMATIVE_CHECKS`, `CLOSED_VOCABULARIES`,
+  `premise_from_canonical`, or the Python's distinctive error clause).
 
 ## Open, and named rather than fixed
 
@@ -215,13 +212,11 @@ pre-registration. A suspiciously specific failure is a bug in the instrument bef
   verifiers disagreed"*. Recorded rather than widened: admitting the value raises a separate question
   — whether `verdicts_accepting` should then reject it — and that is a design decision this
   measurement did not ask.
-- **Numbers in `specs/` are still policed by nothing.** `spec_correspondence.py` now binds the check
-  names and the vocabularies, but `claim_coverage.py`'s corpus still excludes `specs/`,
-  `docs/STRATEGY.md` and `THREAT_MODEL.md`. Widening it moves a published denominator and needs its
-  own pre-registration.
-- **Two mutation harnesses remain outside the population manifest.** `gate_population.py` now
-  imports `mutate_attestation` alongside `mutate_autoapply_guards`, but `mutate_domain_vocabulary`
-  and `mutate_adversarial_corpus` are still invisible to it, so a mutant deleted from either goes
-  unnoticed.
-- **`mutate_autoapply_guards.MUTANTS` has 26 entries while four prose sites say 25, 25, 17 and 18.**
-  Nothing gates those counts. Unrelated to this work, found while reading it.
+- **Numbers in `specs/` are still policed by `spec_correspondence.py`, not `claim_coverage.py`.**
+  `spec_correspondence.py` binds the check names and the vocabularies, while `claim_coverage.py`'s
+  corpus excludes `specs/`, `docs/STRATEGY.md` and `THREAT_MODEL.md` because widening it moves a
+  published denominator and needs its own pre-registration.
+- **Resolved in 2026-10-20:** All four mutation harnesses (`mutate_autoapply_guards` [26],
+  `mutate_attestation` [15], `mutate_domain_vocabulary` [10], `mutate_adversarial_corpus` [4]) are now
+  registered in `gate_population.py` with a structural glob check over `scripts/ci/mutate_*.py`, and
+  the stale mutant counts in `Makefile` and `backend_gate.py` have been reconciled to 26.

@@ -1725,8 +1725,8 @@ claims:
     artifact: eval/results/claim_coverage.json
     pointer: /bound_share
     format: "{:.4f}"
-    expect: "0.0841"
-    context: "**Bound share: 0.0841.**"
+    expect: "0.1630"
+    context: "**Bound share: 0.1630.**"
     note: >-
       P2 pre-registered a range of 5-20% rather than a point value, because the denominator
       depends on extraction choices nobody had fixed before measuring. Registered against the
@@ -1739,8 +1739,8 @@ claims:
     artifact: eval/results/claim_coverage.json
     pointer: /by_category/BOUND
     format: "{:d}"
-    expect: "89"
-    context: "| **BOUND** | **89** |"
+    expect: "178"
+    context: "| **BOUND** | **178** |"
     note: >-
       Occurrences, not distinct claims: a bound value appearing twice in one document counts
       twice, because drift is per occurrence.
@@ -1750,8 +1750,8 @@ claims:
     artifact: eval/results/claim_coverage.json
     pointer: /by_category/UNSOURCED
     format: "{:d}"
-    expect: "772"
-    context: "| **UNSOURCED** | **772** |"
+    expect: "654"
+    context: "| **UNSOURCED** | **654** |"
     note: >-
       The grandfathered backlog the ratchet freezes. K3 required ratcheting on this DECREASING
       rather than on BOUND increasing: a ratchet on registered-claim count is satisfiable by
@@ -1762,8 +1762,8 @@ claims:
     artifact: eval/results/claim_coverage.json
     pointer: /by_category/RESTATED
     format: "{:d}"
-    expect: "185"
-    context: "| **RESTATED** | **185** |"
+    expect: "248"
+    context: "| **RESTATED** | **248** |"
     note: >-
       The sharpest finding. Values bound in one document and restated in another that binds
       nothing, so a copy can drift alone with every gate green. README.md repeats 0.1918,
@@ -1774,8 +1774,8 @@ claims:
     artifact: eval/results/claim_coverage.json
     pointer: /extracted_figures
     format: "{:,}"
-    expect: "1,058"
-    context: "| total extracted | **1,058** |"
+    expect: "1,092"
+    context: "| total extracted | **1,092** |"
     note: >-
       Decimals with two or more fractional digits, fenced code excluded, integers and one-place
       decimals not counted. K2 required publishing the false-positive classes rather than a
@@ -1877,3 +1877,556 @@ claims:
       P5. What a DDL importer emits for an ordinary production table -- not_null plus a primary
       key -- corrupts 9 of 14. This is why the importer work is constrained by evidence rather
       than expanded: importing more constraint kinds is not monotonically good.
+
+
+  - id: per_kind_domain_bounds_corruptions
+    doc: docs/trust/per-kind-authority.md
+    artifact: eval/results/trust_ledger_adversarial.json
+    pointer: /premises/domain_bounds_only/discriminable/corruptions
+    format: "{:d}"
+    expect: "1"
+    context: "| `domain_bounds_only` |"
+    note: >-
+      P13. domain_bounds alone rejects 12 of 14 discriminable attacks, corrects 1, and admits 1
+      (trailing-whitespace-in-zip, which coerces to float 2101.0 within [0, 99999]).
+
+  - id: per_kind_regex_corruptions
+    doc: docs/trust/per-kind-authority.md
+    artifact: eval/results/trust_ledger_adversarial.json
+    pointer: /premises/regex_only/discriminable/corruptions
+    format: "{:d}"
+    expect: "2"
+    context: "| `regex_only` |"
+    note: >-
+      P12. regex_constraints alone rejects 11 of 14 discriminable attacks, corrects 1, and admits
+      2 (out-of-bounds-score and unlisted-category-in-state).
+
+  - id: per_kind_discriminating_type_corruptions
+    doc: docs/trust/per-kind-authority.md
+    artifact: eval/results/trust_ledger_adversarial.json
+    pointer: /premises/discriminating_type_only/discriminable/corruptions
+    format: "{:d}"
+    expect: "3"
+    context: "| `discriminating_type_only` |"
+    note: >-
+      P11. Discriminating int types on score and zip alone reject 10 of 14 discriminable attacks,
+      correct 1, and admit 3 (out-of-bounds-score, trailing-whitespace-in-zip, and
+      zip-failing-its-pattern).
+
+  - id: per_kind_fd_corruptions
+    doc: docs/trust/per-kind-authority.md
+    artifact: eval/results/trust_ledger_adversarial.json
+    pointer: /premises/fd_only/discriminable/corruptions
+    format: "{:d}"
+    expect: "3"
+    context: "| `fd_only` |"
+    note: >-
+      P14. functional_dependencies alone reject 10 of 14 discriminable attacks, correct 1, and
+      admit 3 (all on row 0, whose singleton determinant id="1" has no peer row to conflict with).
+
+  - id: spec_sufficiency_arm_d_baseline
+    doc: docs/trust/specification-sufficiency.md
+    artifact: eval/results/specification_sufficiency.json
+    pointer: /arms/armD/baseline_agreement_rate
+    format: "{:.4f}"
+    expect: "1.0000"
+    context: "26 of 26, agreement rate"
+    note: >-
+      P12. Arm D over the 26-vector baseline after adding the DSSE signature short-circuit rule
+      and Check 13 (authority_is_entailed) to the specification.
+
+  - id: spec_sufficiency_arm_d_full_suite
+    doc: docs/trust/specification-sufficiency.md
+    artifact: eval/results/specification_sufficiency.json
+    pointer: /arms/armD/agreement_rate
+    format: "{:.4f}"
+    expect: "1.0000"
+    context: "35 of 35, agreement rate"
+    note: >-
+      P12. Arm D over all 35 committed conformance vectors and all 13 normative checks.
+
+  - id: real_error_rt_ensemble_precision
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_rt_bench.json
+    pointer: /evaluable_ensemble/precision
+    format: "{:.4f}"
+    expect: "0.0285"
+    context: "corrected `evaluable_ensemble` precision"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. RT-bench evaluable-ensemble precision, distinct-value unit."
+
+  - id: real_error_st_ensemble_precision
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /evaluable_ensemble/precision
+    format: "{:.4f}"
+    expect: "0.0215"
+    context: "corrected `evaluable_ensemble` precision"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. ST-bench evaluable-ensemble precision, distinct-value unit."
+
+  - id: real_error_rt_ensemble_recall
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_rt_bench.json
+    pointer: /evaluable_ensemble/recall
+    format: "{:.4f}"
+    expect: "0.1951"
+    context: "corrected recall"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. RT-bench evaluable-ensemble recall."
+
+  - id: real_error_st_ensemble_recall
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /evaluable_ensemble/recall
+    format: "{:.4f}"
+    expect: "0.2979"
+    context: "corrected recall"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. ST-bench evaluable-ensemble recall."
+
+  - id: real_error_rt_ensemble_f1
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_rt_bench.json
+    pointer: /evaluable_ensemble/f1
+    format: "{:.4f}"
+    expect: "0.0497"
+    context: "corrected F1"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. RT-bench evaluable-ensemble F1."
+
+  - id: real_error_st_ensemble_f1
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /evaluable_ensemble/f1
+    format: "{:.4f}"
+    expect: "0.0401"
+    context: "corrected F1"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. ST-bench evaluable-ensemble F1."
+
+  - id: real_error_rt_semantic_domain_precision
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_rt_bench.json
+    pointer: /per_detector/11/score/precision
+    format: "{:.4f}"
+    expect: "0.3333"
+    context: "| SemanticDomain | per_value |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/11 is SemanticDomainDetector."
+
+  - id: real_error_st_semantic_domain_precision
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /per_detector/11/score/precision
+    format: "{:.4f}"
+    expect: "0.5333"
+    context: "| SemanticDomain | per_value |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/11 is SemanticDomainDetector."
+
+  - id: real_error_rt_missing_value_precision
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_rt_bench.json
+    pointer: /per_detector/4/score/precision
+    format: "{:.4f}"
+    expect: "0.3333"
+    context: "| MissingValue | per_value |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/4 is MissingValueDetector."
+
+  - id: real_error_st_missing_value_precision
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /per_detector/4/score/precision
+    format: "{:.4f}"
+    expect: "0.4000"
+    context: "| MissingValue | per_value |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/4 is MissingValueDetector."
+
+  - id: real_error_rt_type_mismatch_precision
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_rt_bench.json
+    pointer: /per_detector/0/score/precision
+    format: "{:.4f}"
+    expect: "0.0252"
+    context: "| TypeMismatch | per_value |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/0 is TypeMismatchDetector."
+
+  - id: real_error_st_type_mismatch_precision
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /per_detector/0/score/precision
+    format: "{:.4f}"
+    expect: "0.0372"
+    context: "| TypeMismatch | per_value |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/0 is TypeMismatchDetector."
+
+  - id: real_error_rt_format_violation_precision
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_rt_bench.json
+    pointer: /per_detector/3/score/precision
+    format: "{:.4f}"
+    expect: "0.0133"
+    context: "| FormatViolation | per_value |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/3 is FormatViolationDetector."
+
+  - id: real_error_st_format_violation_precision
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /per_detector/3/score/precision
+    format: "{:.4f}"
+    expect: "0.0215"
+    context: "| FormatViolation | per_value |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/3 is FormatViolationDetector."
+
+  - id: real_error_rt_type_mismatch_risk_strict
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_rt_bench.json
+    pointer: /per_detector/0/frontier/0/selective_risk
+    format: "{:.4f}"
+    expect: "0.9714"
+    context: "| TypeMismatch | RT |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. frontier/0 is t=0.95."
+
+  - id: real_error_rt_type_mismatch_risk_loose
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_rt_bench.json
+    pointer: /per_detector/0/frontier/13/selective_risk
+    format: "{:.4f}"
+    expect: "0.9748"
+    context: "| TypeMismatch | RT |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. frontier/13 is t=0.00."
+
+  - id: real_error_st_type_mismatch_risk_strict
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /per_detector/0/frontier/0/selective_risk
+    format: "{:.4f}"
+    expect: "0.9380"
+    context: "| TypeMismatch | ST |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. frontier/0 is t=0.95."
+
+  - id: real_error_st_type_mismatch_risk_loose
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /per_detector/0/frontier/13/selective_risk
+    format: "{:.4f}"
+    expect: "0.9628"
+    context: "| TypeMismatch | ST |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. frontier/13 is t=0.00."
+
+  - id: real_error_rt_format_violation_risk_strict
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_rt_bench.json
+    pointer: /per_detector/3/frontier/0/selective_risk
+    format: "{:.4f}"
+    expect: "0.9623"
+    context: "| FormatViolation | RT |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. frontier/0 is t=0.95."
+
+  - id: real_error_rt_format_violation_risk_loose
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_rt_bench.json
+    pointer: /per_detector/3/frontier/13/selective_risk
+    format: "{:.4f}"
+    expect: "0.9867"
+    context: "| FormatViolation | RT |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. frontier/13 is t=0.00."
+
+  - id: real_error_st_format_violation_risk_strict
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /per_detector/3/frontier/0/selective_risk
+    format: "{:.4f}"
+    expect: "0.9713"
+    context: "| FormatViolation | ST |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. frontier/0 is t=0.95."
+
+  - id: real_error_st_format_violation_risk_loose
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /per_detector/3/frontier/13/selective_risk
+    format: "{:.4f}"
+    expect: "0.9785"
+    context: "| FormatViolation | ST |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. frontier/13 is t=0.00."
+
+  - id: real_error_st_format_violation_risk_upper_best
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /per_detector/3/frontier/0/risk_upper
+    format: "{:.4f}"
+    expect: "0.9874"
+    context: "| FormatViolation | ST |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Best case is t=0.95 (frontier/0). Prose printed 0.9873 until 2026-10-21; artifact holds 0.987425."
+
+  - id: real_error_st_missing_value_risk_upper_best
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /per_detector/4/frontier/1/risk_upper
+    format: "{:.4f}"
+    expect: "0.8071"
+    context: "| **MissingValue** | ST |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Best case is t=0.85 (frontier/1); the grid has no t=0.95 point."
+
+  - id: real_error_st_semantic_domain_risk_upper_best
+    doc: docs/trust/real-error-detection-result.md
+    artifact: eval/results/detection_st_bench.json
+    pointer: /per_detector/11/frontier/1/risk_upper
+    format: "{:.4f}"
+    expect: "0.7000"
+    context: "SemanticDomain` on ST-bench at `t=0.90`"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. The suite's best certification bound, at t=0.90 (frontier/1). Corrects the earlier claim that the best detector bounded at 0.8071."
+
+  - id: cell_flights_entity_consensus_precision
+    doc: docs/trust/cell-level-detection-result.md
+    artifact: eval/results/cell_detection_flights.json
+    pointer: /per_detector/10/score/precision
+    format: "{:.4f}"
+    expect: "0.9632"
+    context: "| flights | contested | EntityConsensus |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/10 is EntityConsensusDetector; cell unit."
+
+  - id: cell_flights_entity_consensus_recall
+    doc: docs/trust/cell-level-detection-result.md
+    artifact: eval/results/cell_detection_flights.json
+    pointer: /per_detector/10/score/recall
+    format: "{:.4f}"
+    expect: "0.3404"
+    context: "| flights | contested | EntityConsensus |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/10 is EntityConsensusDetector; cell unit."
+
+  - id: cell_flights_missing_value_recall
+    doc: docs/trust/cell-level-detection-result.md
+    artifact: eval/results/cell_detection_flights.json
+    pointer: /per_detector/4/score/recall
+    format: "{:.4f}"
+    expect: "0.4817"
+    context: "**MissingValue**"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/4; precision 1.0000 at 0 fp."
+
+  - id: cell_flights_time_format_cruft_recall
+    doc: docs/trust/cell-level-detection-result.md
+    artifact: eval/results/cell_detection_flights.json
+    pointer: /per_detector/8/score/recall
+    format: "{:.4f}"
+    expect: "0.0256"
+    context: "**TimeFormatCruft**"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/8."
+
+  - id: cell_hospital_entity_consensus_precision
+    doc: docs/trust/cell-level-detection-result.md
+    artifact: eval/results/cell_detection_hospital.json
+    pointer: /per_detector/10/score/precision
+    format: "{:.4f}"
+    expect: "0.8800"
+    context: "| hospital | injected | EntityConsensus |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/10 is EntityConsensusDetector; cell unit."
+
+  - id: cell_hospital_entity_consensus_recall
+    doc: docs/trust/cell-level-detection-result.md
+    artifact: eval/results/cell_detection_hospital.json
+    pointer: /per_detector/10/score/recall
+    format: "{:.4f}"
+    expect: "0.6051"
+    context: "| hospital | injected | EntityConsensus |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/10."
+
+  - id: cell_hospital_type_mismatch_recall
+    doc: docs/trust/cell-level-detection-result.md
+    artifact: eval/results/cell_detection_hospital.json
+    pointer: /per_detector/0/score/recall
+    format: "{:.4f}"
+    expect: "0.1807"
+    context: "| hospital | injected | TypeMismatch |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/0."
+
+  - id: cell_hospital_format_violation_precision
+    doc: docs/trust/cell-level-detection-result.md
+    artifact: eval/results/cell_detection_hospital.json
+    pointer: /per_detector/3/score/precision
+    format: "{:.4f}"
+    expect: "0.2188"
+    context: "| hospital | injected | FormatViolation |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/3."
+
+  - id: cell_rayyan_missing_value_precision
+    doc: docs/trust/cell-level-detection-result.md
+    artifact: eval/results/cell_detection_rayyan.json
+    pointer: /per_detector/4/score/precision
+    format: "{:.4f}"
+    expect: "0.0649"
+    context: "| rayyan | natural | MissingValue |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/4. The low end of the 15x corpus swing."
+
+  - id: cell_rayyan_date_transposition_recall
+    doc: docs/trust/cell-level-detection-result.md
+    artifact: eval/results/cell_detection_rayyan.json
+    pointer: /per_detector/9/score/recall
+    format: "{:.4f}"
+    expect: "0.7616"
+    context: "**DateTransposition**"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/9."
+
+  - id: cell_rayyan_format_violation_precision
+    doc: docs/trust/cell-level-detection-result.md
+    artifact: eval/results/cell_detection_rayyan.json
+    pointer: /per_detector/3/score/precision
+    format: "{:.4f}"
+    expect: "0.2388"
+    context: "| rayyan | natural | FormatViolation |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_detector/3."
+
+  - id: deductive_hospital_oracle_unanimity_precision
+    doc: docs/trust/deductive-coverage-result.md
+    artifact: eval/results/deductive_coverage_hospital.json
+    pointer: /arms/oracle/write_exposure/by_rule/unanimity/write_precision
+    format: "{:.4f}"
+    expect: "0.9835"
+    context: "| hospital | oracle | unanimity (rejected) |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Rejected unanimity counterfactual."
+
+  - id: deductive_hospital_mined_unanimity_precision
+    doc: docs/trust/deductive-coverage-result.md
+    artifact: eval/results/deductive_coverage_hospital.json
+    pointer: /arms/mined/write_exposure/by_rule/unanimity/write_precision
+    format: "{:.4f}"
+    expect: "0.9420"
+    context: "| hospital | mined (opt-in) | unanimity (rejected) |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Rejected unanimity counterfactual."
+
+  - id: deductive_flights_oracle_plurality_precision
+    doc: docs/trust/deductive-coverage-result.md
+    artifact: eval/results/deductive_coverage_flights.json
+    pointer: /arms/oracle/write_exposure/by_rule/plurality/write_precision
+    format: "{:.4f}"
+    expect: "0.5618"
+    context: "| flights | oracle | plurality (former) |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Retired plurality rule, kept as counterfactual."
+
+  - id: deductive_flights_oracle_majority_precision
+    doc: docs/trust/deductive-coverage-result.md
+    artifact: eval/results/deductive_coverage_flights.json
+    pointer: /arms/oracle/write_exposure/by_rule/majority/write_precision
+    format: "{:.4f}"
+    expect: "0.6602"
+    context: "| flights | oracle | **majority (ships)** |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Shipped strict-majority rule."
+
+  - id: deductive_flights_oracle_majority_coverage
+    doc: docs/trust/deductive-coverage-result.md
+    artifact: eval/results/deductive_coverage_flights.json
+    pointer: /arms/oracle/write_exposure/by_rule/majority/coverage_of_all_table_errors
+    format: "{:.4f}"
+    expect: "0.2425"
+    context: "under the shipped strict-majority rule"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Corrected 2026-10-21 from 0.3734, which is the retired plurality rule's coverage."
+
+  - id: deductive_hospital_mined_harmful_write_rate
+    doc: docs/trust/deductive-coverage-result.md
+    artifact: eval/results/deductive_coverage_hospital.json
+    pointer: /arms/mined/write_exposure/by_rule/majority/harmful_write_rate
+    format: "{:.4f}"
+    expect: "0.1601"
+    context: "harmful write rate"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Shipped rule on the opt-in mined premise."
+
+  - id: deductive_hospital_oracle_coverage
+    doc: docs/trust/deductive-coverage-result.md
+    artifact: eval/results/deductive_coverage_hospital.json
+    pointer: /arms/oracle/write_exposure/by_rule/majority/coverage_of_all_table_errors
+    format: "{:.4f}"
+    expect: "0.7721"
+    context: "coverage falls from"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Shipped rule, oracle premise."
+
+  - id: deductive_hospital_oracle_unanimity_coverage
+    doc: docs/trust/deductive-coverage-result.md
+    artifact: eval/results/deductive_coverage_hospital.json
+    pointer: /arms/oracle/write_exposure/by_rule/unanimity/coverage_of_all_table_errors
+    format: "{:.4f}"
+    expect: "0.3517"
+    context: "coverage falls from"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Rejected unanimity counterfactual."
+
+  - id: deductive_hospital_mined_unanimity_coverage
+    doc: docs/trust/deductive-coverage-result.md
+    artifact: eval/results/deductive_coverage_hospital.json
+    pointer: /arms/mined/write_exposure/by_rule/unanimity/coverage_of_all_table_errors
+    format: "{:.4f}"
+    expect: "0.3831"
+    context: "hospital mined: coverage falls"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Rejected unanimity counterfactual."
+
+  - id: queue_filter_baseline_precision
+    doc: docs/trust/queue-filter-result.md
+    artifact: eval/results/queue_filter_rayyan.json
+    pointer: /baseline/precision
+    format: "{:.4f}"
+    expect: "0.3453"
+    context: "Baseline queue"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Rayyan review queue before the LLM filter."
+
+  - id: queue_filter_baseline_recall
+    doc: docs/trust/queue-filter-result.md
+    artifact: eval/results/queue_filter_rayyan.json
+    pointer: /baseline/recall_of_table
+    format: "{:.4f}"
+    expect: "0.8428"
+    context: "Baseline queue"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Share of all table errors present in the baseline queue."
+
+  - id: queue_filter_format_violation_baseline_precision
+    doc: docs/trust/queue-filter-result.md
+    artifact: eval/results/queue_filter_rayyan.json
+    pointer: /per_stratum/2/baseline_precision
+    format: "{:.4f}"
+    expect: "0.2436"
+    context: "| `format_violation` |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. per_stratum/2 is format_violation."
+
+  - id: queue_filter_q2_recall_retained
+    doc: docs/trust/queue-filter-result.md
+    artifact: eval/results/queue_filter_rayyan.json
+    pointer: /verdicts/Q2_date_transposition_recall_retained
+    format: "{:.4f}"
+    expect: "0.0100"
+    context: "Q2 `date_transposition` recall retained"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Pre-registered Q2; threshold 0.95; NOT SUPPORTED."
+
+  - id: queue_filter_projected_precision
+    doc: docs/trust/queue-filter-result.md
+    artifact: eval/results/queue_filter_rayyan.json
+    pointer: /projected/precision
+    format: "{:.4f}"
+    expect: "0.1036"
+    context: "The projected"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Projected post-filter precision, distorted by the uncovered stratum."
+
+  - id: queue_filter_projected_recall
+    doc: docs/trust/queue-filter-result.md
+    artifact: eval/results/queue_filter_rayyan.json
+    pointer: /projected/recall_retained
+    format: "{:.4f}"
+    expect: "0.0105"
+    context: "characterises the result"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Projected post-filter recall retained (Q3)."
+
+  - id: queue_filter_guarded_keep_true
+    doc: docs/trust/queue-filter-result.md
+    artifact: eval/results/queue_filter_prompt_sensitivity.json
+    pointer: /arms/guarded/keep_true
+    format: "{:.4f}"
+    expect: "0.0250"
+    context: "| guarded (with the hint) |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Prompt-sensitivity arm, n=80 true cells."
+
+  - id: queue_filter_neutral_keep_true
+    doc: docs/trust/queue-filter-result.md
+    artifact: eval/results/queue_filter_prompt_sensitivity.json
+    pointer: /arms/neutral/keep_true
+    format: "{:.4f}"
+    expect: "0.0375"
+    context: "| neutral (hint removed) |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Prompt-sensitivity arm, n=80 true cells."
+
+  - id: queue_filter_neutral_keep_false
+    doc: docs/trust/queue-filter-result.md
+    artifact: eval/results/queue_filter_prompt_sensitivity.json
+    pointer: /arms/neutral/keep_false
+    format: "{:.4f}"
+    expect: "0.8000"
+    context: "| neutral (hint removed) |"
+    note: "Wave 2 (2026-10-21), high-risk claim-coverage backlog. Prompt-sensitivity arm, n=60 false cells."

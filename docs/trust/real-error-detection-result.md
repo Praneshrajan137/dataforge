@@ -54,12 +54,23 @@ threshold at all**:
 | TypeMismatch | RT | 0.9714 | 0.9748 | 0.9922 |
 | TypeMismatch | ST | 0.9380 | 0.9628 | 0.9681 |
 | FormatViolation | RT | 0.9623 | 0.9867 | 0.9933 |
-| FormatViolation | ST | 0.9713 | 0.9785 | 0.9873 |
+| FormatViolation | ST | 0.9713 | 0.9785 | 0.9874 |
 | DecimalShift | both | 1.0000 | 1.0000 | 1.0000 |
 | Outlier | both | 1.0000 | 1.0000 | 1.0000 |
 | DateTransposition | ST | — | 1.0000 | 1.0000 |
-| **MissingValue** | RT | 0.7143 | 0.6667 | **0.9023** |
-| **MissingValue** | ST | 0.5000 | 0.6000 | **0.8071** |
+| **MissingValue** | RT | 0.7143 (t=0.90) | 0.6667 | **0.9023** |
+| **MissingValue** | ST | 0.5000 (t=0.90) | 0.6000 | **0.8071** |
+| **SemanticDomain** | RT | 0.5000 | 0.6667 | **0.9023** |
+| **SemanticDomain** | ST | 0.2500 | 0.4667 | **0.7000** |
+
+> **CORRECTED 2026-10-21** against the same artifacts, found while binding this table to
+> `docs/quantitative_claims.yaml`. Three defects, none of which changes the conclusion:
+> (1) FormatViolation ST best-case `risk_upper` was printed 0.9873; the artifact holds 0.987425,
+> which renders 0.9874. (2) `MissingValue` has no `t=0.95` grid point -- its frontier starts at
+> `t=0.90` -- so the two values in that column are at `t=0.90` and are now labelled so.
+> (3) `SemanticDomain` was absent from this table although both corrected headline rows include
+> it; its rows are added from `per_detector/11/frontier`. Its ST bound of 0.7000 is the best in
+> the suite, which corrects the paragraph below.
 
 A flat frontier is a *calibration* result, not an accuracy result, and it is the more
 damaging of the two. If risk does not fall as the threshold rises, then no threshold can
@@ -72,8 +83,16 @@ confidence range.
 
 `conformal.certify_threshold` certifies a threshold when the one-sided Clopper-Pearson
 upper bound on selective risk clears `alpha`. At `alpha = 0.05`, the **best** detector in
-the suite bounds at `risk_upper = 0.8071`, sixteen times the budget. Every other detector
-bounds at 0.97 or 1.00.
+the suite -- `SemanticDomain` on ST-bench at `t=0.90` -- bounds at `risk_upper = 0.7000`,
+fourteen times the budget, as `semantic-domain-result.md` already reports. `MissingValue` on
+ST-bench bounds at 0.8071; `SemanticDomain` and `MissingValue` on RT-bench at 0.9023; every
+other detector at 0.97 or 1.00.
+
+> **CORRECTED 2026-10-21.** This paragraph previously read: *"the **best** detector in the suite
+> bounds at `risk_upper = 0.8071`, sixteen times the budget. Every other detector bounds at 0.97
+> or 1.00."* It predates `SemanticDomain` joining the suite and contradicted both this document's
+> artifacts and `semantic-domain-result.md`. The conclusion is unchanged: 0.7000 is still far
+> above 0.05, so nothing certifies.
 
 So the write gate holding everything is not conservatism, and it is not a placeholder
 awaiting a better model. On this evidence it is the only defensible behaviour, and

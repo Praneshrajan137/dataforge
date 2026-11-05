@@ -198,8 +198,10 @@ protocol.
   reject it — while `entailment_strength.md` lines 29-36 had specified exactly six conditions all
   along. Adding one relationship field to the permissive premise took it from 0 writes to **11,
   corrupting 10 of 14**, reproducing the pre-2026-08-25 `str` figure exactly, and one applied
-  injection took the table from 6 rows to 7
-  ([docs/trust/authority-enforcement-correspondence.md](docs/trust/authority-enforcement-correspondence.md)).
+  injection was initially recorded as taking the table from 6 rows to 7 (withdrawn 2026-09-16:
+  that count came from `splitlines()` on a quoted CSV newline while the parsed table remained 6
+  rows by 5 fields; see
+  [docs/trust/authority-enforcement-correspondence.md](docs/trust/authority-enforcement-correspondence.md)).
 
   Two things about it belong in this file rather than only in a decision log. **The realistic path
   in was dbt**, not an adversary: `dataforge/integrations/dbt.py` maps dbt's built-in

@@ -1,10 +1,49 @@
-# Claim coverage: 8.41% of published decimal figures are bound to evidence
+# Claim coverage: how many published decimal figures are bound to evidence
 
 **Date:** 2026-09-14
 **Pre-registration:** [eval/preregistration/claim_coverage_census.md](../../eval/preregistration/claim_coverage_census.md)
 **Instrument:** `scripts/ci/claim_coverage.py`
 **Baseline:** `eval/results/claim_coverage_baseline.json`
 **Gate:** `make claim-coverage`, `tests/unit/test_claim_coverage_census.py`
+
+## Current state (2026-10-21)
+
+| category | count |
+| --- | --- |
+| **BOUND** | **178** |
+| **GENERATED** | **12** |
+| **RESTATED** | **248** |
+| **UNSOURCED** | **654** |
+| total extracted | **1,092** |
+
+**Bound share: 0.1630.** 37 of 57 live documents contain no bound figure. Up from 0.0841 on
+2026-09-14 (the original measurement below, kept as recorded). The change is the triage this
+document's own "Not done" section asked for: 54 ledger entries were registered in the four documents
+it named as the highest-risk group, taking their unsourced count from 142 to 83
+(`real-error-detection-result.md` 56 to 43, `cell-level-detection-result.md` 28 to 12,
+`deductive-coverage-result.md` 20 to 7, `queue-filter-result.md` 38 to 21). The baseline was
+re-emitted, so the ratchet now holds the lower counts.
+
+**Binding found four published figures the artifacts contradict**, which is the argument for doing it
+rather than a side effect. Each is corrected in place with a dated note that keeps the original text:
+
+- `real-error-detection-result.md` said the best detector bounds at `risk_upper` 0.8071, sixteen
+  times `alpha`. The artifact's best is `SemanticDomain` on ST-bench, 0.7000 (fourteen times), which
+  `semantic-domain-result.md` already reported. `SemanticDomain` was missing from the frontier table.
+- The same document printed a FormatViolation bound of 0.9873 where the artifact holds 0.987425, and
+  put `MissingValue` values in a `t=0.95` column although that detector has no `t=0.95` grid point.
+- `deductive-coverage-result.md` quoted flights coverage 0.3734 at write precision 0.5618, and a
+  precision floor of 0.5618, as the product's figures. Those are the **retired plurality rule**.
+  The rule that has shipped since 2026-08-25 measures 0.2425 at 0.6602. The same paragraph still called
+  the mined premise the "default", which the document's own 2026-08-25 correction had withdrawn.
+
+None of the four changes a conclusion. All four were invisible to every gate because no ledger entry
+pointed at them. **What binding does not do:** a pointer is chosen by a person, and a value-equal
+pointer is a candidate, not a binding. Each of the 54 pointers was checked against the sentence it
+binds. The census counts every occurrence of a bound value in that document as bound, so the other
+occurrences behind the drop of 59 were not each checked one by one. Thresholds such as `alpha = 0.05` and `t=0.95`, figures
+derived by hand (the 0.8957 FD-set precision), and figures quoting a source outside the cited
+artifacts (the `cli/calibrate.py` precisions) were left unbound on purpose.
 
 ## What was not being checked
 
@@ -15,7 +54,7 @@ nobody registered is invisible to it. That is the direction the hospital anchor 
 `tests/unit/test_release_gate.py`: *"a planted unregistered bolded numeral passes, which is a
 coverage direction this gate does not have."*
 
-## The measurement
+## The measurement (2026-09-14, original)
 
 Decimal figures with two or more fractional digits, across 53 live documents
 (`docs/trust/*.md` globbed, plus `README.md`, `PRODUCT.md`, `ARCHITECTURE.md`):
@@ -142,8 +181,10 @@ is now derived from a grep of the corpus rather than guessed.
   it points at measures what the sentence says remains a human judgement, and
   [baseline-protocol-comparability.md](baseline-protocol-comparability.md) exists because that
   judgement has been wrong here before.
-- **Not** done: the 772 are grandfathered, not triaged. The highest-risk group is the measured
-  precision/recall/F1 figures in `real-error-detection-result.md`,
+- **Not** done (as of 2026-09-14): the 772 are grandfathered, not triaged. The highest-risk group is
+  the measured precision/recall/F1 figures in `real-error-detection-result.md`,
   `cell-level-detection-result.md`, `deductive-coverage-result.md` and `queue-filter-result.md`,
   which carry measured results and zero registered claims. `RESTATED` figures do not yet name the
   claim id they copy; requiring that is the next increment.
+- **Update 2026-10-21:** the four high-risk documents are partly triaged (see "Current state"). 654
+  unsourced figures remain grandfathered. The `RESTATED` increment is still not done.

@@ -2,8 +2,8 @@
   "schema": 1,
   "note": "Derived, never hand-written. Refresh with 'python scripts/ci/gate_population.py --emit' and explain any change in the commit message: a shrinking population is a weaker gate, not a faster one.",
   "pytest": {
-    "node_id_count": 3164,
-    "node_ids_sha256": "7e077c39721a84ee0e8999f9fc936f222996b092a783033c3910b13847114e67",
+    "node_id_count": 3174,
+    "node_ids_sha256": "45d3a2fbc601e77d1dd1a872c7b89b84abf8ea2e6868785d41795b31d0136023",
     "node_ids": [
       "tests/adversarial/test_agent_safety.py::TestAgentSafetyIsNonNegotiable::test_pii_overwrite_is_blocked",
       "tests/adversarial/test_agent_safety.py::TestAgentSafetyIsNonNegotiable::test_prompt_injection_in_data_does_not_bypass_gate",
@@ -242,6 +242,7 @@
       "tests/integration/test_playground_smoke.py::test_analyze_advanced_unavailable_without_provider_key",
       "tests/integration/test_playground_smoke.py::test_analyze_agent_mode_attaches_verified_agent_summary",
       "tests/integration/test_playground_smoke.py::test_analyze_agent_mode_unavailable_is_problem",
+      "tests/integration/test_playground_smoke.py::test_analyze_and_verify_fixes_emit_normative_13_check_attestation",
       "tests/integration/test_playground_smoke.py::test_analyze_clean_csv_returns_no_action_with_pending_assumptions",
       "tests/integration/test_playground_smoke.py::test_analyze_default_mode_has_no_agent_block",
       "tests/integration/test_playground_smoke.py::test_analyze_entity_consensus_flag_surfaces_review_suggestions",
@@ -291,6 +292,9 @@
       "tests/integration/test_premise_provenance_authority.py::TestC4ChangesBehaviour::test_the_hold_is_reported_with_an_honest_reason",
       "tests/integration/test_premise_provenance_authority.py::TestC4LeavesTheDeclaredArmAlone::test_a_declared_dependency_still_authorises_the_write",
       "tests/integration/test_premise_provenance_authority.py::TestC4LeavesTheDeclaredArmAlone::test_no_premise_at_all_still_writes_nothing",
+      "tests/integration/test_premise_provenance_authority.py::TestMinedAuthorityAttestation::test_mined_authority_emits_verifiable_attestation",
+      "tests/integration/test_premise_provenance_authority.py::TestMinedAuthorityAttestation::test_mined_authority_without_effective_schema_fails_closed",
+      "tests/integration/test_premise_provenance_authority.py::TestMinedAuthorityAttestation::test_schema_to_mapping_round_trips_every_field",
       "tests/integration/test_quickstart.py::TestQuickstart::test_quickstart_detects_more_than_it_repairs",
       "tests/integration/test_quickstart.py::TestQuickstart::test_quickstart_is_listed_in_help",
       "tests/integration/test_quickstart.py::TestQuickstart::test_quickstart_reports_at_least_one_repair",
@@ -581,6 +585,9 @@
       "tests/unit/test_authority_enforcement_correspondence.py::TestEnforceableKindsStillConferAuthority::test_declaring_this_kind_confers_authority[regex_constraints]",
       "tests/unit/test_authority_enforcement_correspondence.py::TestEnforceableKindsStillConferAuthority::test_declaring_this_kind_confers_authority[unique_columns]",
       "tests/unit/test_authority_enforcement_correspondence.py::TestEnforceableKindsStillConferAuthority::test_every_enforceable_kind_has_a_non_vacuity_case",
+      "tests/unit/test_authority_enforcement_correspondence.py::TestStrongWeakAuthorityPartition::test_attestation_authority_check_discloses_weak_only_columns",
+      "tests/unit/test_authority_enforcement_correspondence.py::TestStrongWeakAuthorityPartition::test_strong_and_weak_partition_enforceable_constraint_kinds",
+      "tests/unit/test_authority_enforcement_correspondence.py::TestStrongWeakAuthorityPartition::test_weak_only_authority_columns_identifies_weak_only_and_excludes_mixed",
       "tests/unit/test_authority_enforcement_correspondence.py::TestThePartitionIsTotal::test_every_unenforceable_kind_states_a_reason",
       "tests/unit/test_authority_enforcement_correspondence.py::TestThePartitionIsTotal::test_partition_covers_every_schema_field",
       "tests/unit/test_authority_enforcement_correspondence.py::TestThePartitionIsTotal::test_partition_names_no_field_that_does_not_exist",
@@ -1451,6 +1458,7 @@
       "tests/unit/test_date_transposition_claim_binding.py::TestTheLedgerActuallyBindsTheseClaims::test_the_three_claim_ids_are_registered",
       "tests/unit/test_date_transposition_claim_binding.py::TestThePointerResolvesToTheIntendedDetector::test_index_nine_is_the_date_transposition_detector",
       "tests/unit/test_date_transposition_claim_binding.py::TestThePointerResolvesToTheIntendedDetector::test_the_detector_appears_exactly_once",
+      "tests/unit/test_dbt_integration.py::test_authoritative_schema_from_dbt_manifest_withholds_weak_kinds",
       "tests/unit/test_dbt_integration.py::test_schema_from_dbt_artifacts_loads_manifest_file",
       "tests/unit/test_dbt_integration.py::test_schema_from_dbt_manifest_maps_supported_generic_tests",
       "tests/unit/test_decimal_shift.py::TestDecimalShiftEdgeCases::test_01x_shift",
@@ -3123,6 +3131,8 @@
       "tests/unit/test_vocabulary_projection.py::TestProjectionCoverage::test_an_exemption_that_contradicts_a_projection_is_refused",
       "tests/unit/test_vocabulary_projection.py::TestProjectionCoverage::test_an_unprojected_constant_is_refused",
       "tests/unit/test_vocabulary_projection.py::TestProjectionCoverage::test_every_exemption_carries_a_reason",
+      "tests/unit/test_vocabulary_projection.py::TestProjectionCoverage::test_every_public_symbol_in_vocabulary_is_in_all",
+      "tests/unit/test_vocabulary_projection.py::TestProjectionCoverage::test_strong_and_weak_authority_kinds_are_projected_into_typescript",
       "tests/unit/test_vocabulary_projection.py::TestProjectionCoverage::test_the_accounting_is_exhaustive_and_disjoint",
       "tests/unit/test_vocabulary_projection.py::TestProjectionCoverage::test_the_shipped_projection_accounts_for_every_constant",
       "tests/unit/test_vocabulary_projection.py::TestProjectionCoverage::test_the_write_authority_allowlist_stays_out_of_the_browser",
@@ -3364,17 +3374,68 @@
     ],
     "A15-authority-claim-taken-on-trust": [
       "tests/unit/test_attestation_vectors.py"
+    ],
+    "a new review reason is added without regenerating TypeScript": [
+      "scripts/ci/generate_domain_vocabulary.py"
+    ],
+    "a review reason's phrasing is reworded on the Python side only": [
+      "scripts/ci/generate_domain_vocabulary.py"
+    ],
+    "a provenance is added to the literal but not to any trust partition": [
+      "tests/unit/test_trust_vocab.py"
+    ],
+    "the trust predicate is rewritten to read a denylist (fails open)": [
+      "tests/unit/test_trust_vocab.py"
+    ],
+    "the rung ladder is reordered so a weaker rung outranks a stronger one": [
+      "tests/unit/test_trust_vocab.py"
+    ],
+    "a missing strength is mapped UP the ladder instead of down": [
+      "tests/unit/test_trust_vocab.py"
+    ],
+    "the generated TypeScript is hand-edited": [
+      "scripts/ci/generate_domain_vocabulary.py"
+    ],
+    "the generated file's source fingerprint is stripped": [
+      "playground/web/scripts/audit_vocabulary.mjs"
+    ],
+    "the certificate trusts the recorded strength label instead of deriving it": [
+      "tests/unit/test_certificate.py"
+    ],
+    "the certificate credits authority table-wide instead of per column": [
+      "tests/unit/test_certificate.py"
+    ],
+    "the proven-only write gate becomes a no-op": [
+      "tests/adversarial",
+      "tests/property/test_no_corruption_invariant.py"
+    ],
+    "strength is hardcoded to proven instead of derived": [
+      "tests/adversarial",
+      "tests/property/test_no_corruption_invariant.py"
+    ],
+    "every provenance is treated as trusted": [
+      "tests/adversarial",
+      "tests/property/test_no_corruption_invariant.py"
+    ],
+    "authority is granted over every column": [
+      "tests/adversarial",
+      "tests/property/test_no_corruption_invariant.py"
     ]
   },
-  "mutant_count": 41,
+  "mutant_count": 55,
   "mutant_test_paths": [
+    "playground/web/scripts/audit_vocabulary.mjs",
+    "scripts/ci/generate_domain_vocabulary.py",
+    "tests/adversarial",
     "tests/adversarial/test_corpus_gate.py",
     "tests/integration/test_autoapply_decision_table.py",
     "tests/integration/test_playground_smoke.py",
+    "tests/property/test_no_corruption_invariant.py",
     "tests/unit/test_agent_gate.py",
     "tests/unit/test_attestation.py",
     "tests/unit/test_attestation_vectors.py",
     "tests/unit/test_authority_enforcement_correspondence.py",
+    "tests/unit/test_certificate.py",
     "tests/unit/test_certificate_policy_gap.py",
     "tests/unit/test_column_scoped_authority.py",
     "tests/unit/test_corpus_tiering.py",
@@ -3390,6 +3451,7 @@
     "tests/unit/test_table_store_patch_plan.py",
     "tests/unit/test_table_store_proven_gate.py",
     "tests/unit/test_transactions.py",
+    "tests/unit/test_trust_vocab.py",
     "tests/unit/test_warehouse_allowlist_gate.py"
   ],
   "docs_truth_claim_ids": [
@@ -3410,6 +3472,17 @@
     "capability_stage_f1_ratio",
     "capability_stage_pipeline_legacy_f1",
     "capability_stage_proposal_f1",
+    "cell_flights_entity_consensus_precision",
+    "cell_flights_entity_consensus_recall",
+    "cell_flights_missing_value_recall",
+    "cell_flights_time_format_cruft_recall",
+    "cell_hospital_entity_consensus_precision",
+    "cell_hospital_entity_consensus_recall",
+    "cell_hospital_format_violation_precision",
+    "cell_hospital_type_mismatch_recall",
+    "cell_rayyan_date_transposition_recall",
+    "cell_rayyan_format_violation_precision",
+    "cell_rayyan_missing_value_precision",
     "claim_coverage_bound_count",
     "claim_coverage_bound_share",
     "claim_coverage_extracted_total",
@@ -3434,6 +3507,15 @@
     "declared_premise_premise_sha256_frozen",
     "declared_premise_proposal_f1",
     "declared_premise_thinned_oracle_writes",
+    "deductive_flights_oracle_majority_coverage",
+    "deductive_flights_oracle_majority_precision",
+    "deductive_flights_oracle_plurality_precision",
+    "deductive_hospital_mined_harmful_write_rate",
+    "deductive_hospital_mined_unanimity_coverage",
+    "deductive_hospital_mined_unanimity_precision",
+    "deductive_hospital_oracle_coverage",
+    "deductive_hospital_oracle_unanimity_coverage",
+    "deductive_hospital_oracle_unanimity_precision",
     "fd_scalability_hours",
     "fd_scalability_propose_ms",
     "fd_scalability_propose_share",
@@ -3479,7 +3561,11 @@
     "p3_hospital_mined_fds",
     "per_kind_accepted_values_corruptions",
     "per_kind_ddl_typical_corruptions",
+    "per_kind_discriminating_type_corruptions",
+    "per_kind_domain_bounds_corruptions",
+    "per_kind_fd_corruptions",
     "per_kind_not_null_corruptions",
+    "per_kind_regex_corruptions",
     "per_kind_unique_corruptions",
     "premise_flights_candidates",
     "premise_hospital_candidates",
@@ -3495,7 +3581,41 @@
     "product_warning_shipped_corrupted",
     "product_warning_shipped_rate",
     "pruning_certifies_type_mismatch_at_alpha_005",
+    "queue_filter_baseline_precision",
+    "queue_filter_baseline_recall",
+    "queue_filter_format_violation_baseline_precision",
+    "queue_filter_guarded_keep_true",
+    "queue_filter_neutral_keep_false",
+    "queue_filter_neutral_keep_true",
+    "queue_filter_projected_precision",
+    "queue_filter_projected_recall",
+    "queue_filter_q2_recall_retained",
     "rayyan_default_precision",
+    "real_error_rt_ensemble_f1",
+    "real_error_rt_ensemble_precision",
+    "real_error_rt_ensemble_recall",
+    "real_error_rt_format_violation_precision",
+    "real_error_rt_format_violation_risk_loose",
+    "real_error_rt_format_violation_risk_strict",
+    "real_error_rt_missing_value_precision",
+    "real_error_rt_semantic_domain_precision",
+    "real_error_rt_type_mismatch_precision",
+    "real_error_rt_type_mismatch_risk_loose",
+    "real_error_rt_type_mismatch_risk_strict",
+    "real_error_st_ensemble_f1",
+    "real_error_st_ensemble_precision",
+    "real_error_st_ensemble_recall",
+    "real_error_st_format_violation_precision",
+    "real_error_st_format_violation_risk_loose",
+    "real_error_st_format_violation_risk_strict",
+    "real_error_st_format_violation_risk_upper_best",
+    "real_error_st_missing_value_precision",
+    "real_error_st_missing_value_risk_upper_best",
+    "real_error_st_semantic_domain_precision",
+    "real_error_st_semantic_domain_risk_upper_best",
+    "real_error_st_type_mismatch_precision",
+    "real_error_st_type_mismatch_risk_loose",
+    "real_error_st_type_mismatch_risk_strict",
     "rwd_dblp_candidates_scored",
     "rwd_dblp_mu_plus_false_above_zero",
     "rwd_hospital_mu_plus_false_above_zero",
@@ -3519,6 +3639,8 @@
     "spec_sufficiency_arm_b_agreement",
     "spec_sufficiency_arm_c_agreement",
     "spec_sufficiency_arm_c_full_suite",
+    "spec_sufficiency_arm_d_baseline",
+    "spec_sufficiency_arm_d_full_suite",
     "structured_k3_auc",
     "structured_k9_auc",
     "warning_flagged_cells_default",
