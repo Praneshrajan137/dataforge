@@ -89,3 +89,32 @@ def test_schema_from_dbt_artifacts_loads_manifest_file(tmp_path: Path) -> None:
     schema = schema_from_dbt_artifacts(manifest_path, model_unique_id="model.demo.orders")
 
     assert schema.not_null_columns == frozenset({"id"})
+
+
+def test_authoritative_schema_from_dbt_manifest_withholds_weak_kinds() -> None:
+    from dataforge.domain.premise import authoritative_columns
+    from dataforge.integrations.dbt import authoritative_schema_from_dbt_manifest
+
+    manifest = _manifest()
+    # Add a weak-only column (not_null + unique, string type, no accepted_values)
+    manifest["nodes"]["model.demo.orders"]["columns"]["weak_col"] = {"data_type": "string"}
+    manifest["nodes"]["test.demo.not_null_orders_weak"] = {
+        "resource_type": "test",
+        "test_metadata": {"name": "not_null", "kwargs": {"column_name": "weak_col"}},
+        "depends_on": {"nodes": ["model.demo.orders"]},
+    }
+    manifest["nodes"]["test.demo.unique_orders_weak"] = {
+        "resource_type": "test",
+        "test_metadata": {"name": "unique", "kwargs": {"column_name": "weak_col"}},
+        "depends_on": {"nodes": ["model.demo.orders"]},
+    }
+
+    full_schema = schema_from_dbt_manifest(manifest, model_name="orders")
+    assert "weak_col" in authoritative_columns(full_schema)
+
+    strong_schema = authoritative_schema_from_dbt_manifest(manifest, model_name="orders")
+    assert strong_schema.not_null_columns == frozenset()
+    assert strong_schema.unique_columns == frozenset()
+    assert strong_schema.accepted_values == full_schema.accepted_values
+    assert authoritative_columns(strong_schema) == frozenset({"id", "status"})
+    assert "weak_col" not in authoritative_columns(strong_schema)

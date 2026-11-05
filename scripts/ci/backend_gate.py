@@ -95,7 +95,7 @@ MYPY_PATHS = [
     "scripts/ci/openapi_contract.py",
     "scripts/ci/pypi_publish_report.py",
     "scripts/ci/backend_gate.py",
-    # Added 2026-08-26. This file plants 17 mutants against the write-authority guards and was
+    # Added 2026-08-26. This file plants 26 mutants against the write-authority guards and was
     # invoked by nothing and type-checked by nothing -- a dead gate reads as coverage, which is
     # worse than no gate. It is now run below and checked here.
     "scripts/ci/mutate_autoapply_guards.py",
@@ -235,53 +235,10 @@ class NpmAuditException:
     upstream_reference: str
 
 
-NPM_AUDIT_EXCEPTIONS = [
-    NpmAuditException(
-        advisory_id="GHSA-r28c-9q8g-f849",
-        package="postcss",
-        scope="vite build toolchain only; not in the shipped browser bundle",
-        expires_on=date(2026, 11, 8),
-        reason=(
-            "Triaged 2026-08-08. postcss reaches this project on exactly one path, "
-            "vite -> devDependencies, where it processes CSS at build time. The five "
-            "runtime dependencies are react, react-dom, motion, papaparse and "
-            "lucide-react. The patched 8.5.26 satisfies vite's existing ^8.5.15 range, so "
-            "this IS fixable by a lockfile bump -- but regenerating package-lock.json on "
-            "Windows produced a lock with zero integrity/resolved fields and 192 of 226 "
-            "packages, which is a worse supply-chain outcome than a build-time advisory. "
-            "Regenerate on Linux and remove this exception."
-        ),
-        upstream_reference="https://github.com/advisories/GHSA-r28c-9q8g-f849",
-    ),
-    NpmAuditException(
-        advisory_id="GHSA-fxqj-rqcc-2cmp",
-        package="postcss",
-        scope="vite build toolchain only; not in the shipped browser bundle",
-        expires_on=date(2026, 11, 8),
-        reason="Triaged 2026-08-08, same package and same blocker as GHSA-r28c-9q8g-f849.",
-        upstream_reference="https://github.com/advisories/GHSA-fxqj-rqcc-2cmp",
-    ),
-    NpmAuditException(
-        advisory_id="GHSA-28wg-ghj8-5hjv",
-        package="nanoid",
-        scope="transitive dependency of postcss, so vite build toolchain only",
-        expires_on=date(2026, 11, 8),
-        reason=(
-            "Triaged 2026-08-08. nanoid arrives only under postcss, which is build-time "
-            "only. The advisory needs an attacker-controlled negative size argument, and "
-            "no application code calls nanoid at all."
-        ),
-        upstream_reference="https://github.com/advisories/GHSA-28wg-ghj8-5hjv",
-    ),
-    NpmAuditException(
-        advisory_id="GHSA-2v37-7h3g-55p8",
-        package="nanoid",
-        scope="transitive dependency of postcss, so vite build toolchain only",
-        expires_on=date(2026, 11, 8),
-        reason="Triaged 2026-08-08, same package and same blocker as GHSA-28wg-ghj8-5hjv.",
-        upstream_reference="https://github.com/advisories/GHSA-2v37-7h3g-55p8",
-    ),
-]
+#: EMPTY as of 2026-10-29: upgrading `vite` to 8.3.5 via `npm audit fix` resolved all five Vite
+#: advisories AND upgraded `postcss`/`nanoid` cleanly while preserving 218/218 `integrity` and
+#: `resolved` hashes plus all 12 Linux optional packages in `playground/web/package-lock.json`.
+NPM_AUDIT_EXCEPTIONS: list[NpmAuditException] = []
 EXCLUDED_SECRET_DIRS = {
     ".git",
     ".mypy_cache",
@@ -1336,7 +1293,7 @@ def main() -> int:
     # together.
     #
     # There is also no speed argument for isolating these into worktrees: the auto-apply harness
-    # measures 47.4s for a green baseline plus 18 mutants. Sequential here is a correctness
+    # measures ~50s for a green baseline plus 26 mutants. Sequential here is a correctness
     # choice that costs almost nothing.
     #
     # The two vocabulary/corpus harnesses ran pytest and were invoked by NOTHING before

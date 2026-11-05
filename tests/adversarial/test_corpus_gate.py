@@ -36,9 +36,13 @@ from dataforge.transactions.revert import revert_transaction
 from tests.adversarial.corpus import (
     ACCEPTED_VALUES_ONLY_SCHEMA,
     DDL_TYPICAL_SCHEMA,
+    DISCRIMINATING_TYPE_ONLY_SCHEMA,
+    DOMAIN_BOUNDS_ONLY_SCHEMA,
+    FD_ONLY_SCHEMA,
     NOT_NULL_ONLY_SCHEMA,
     PERMISSIVE_SCHEMA,
     PRIMARY_KEY_ONLY_SCHEMA,
+    REGEX_ONLY_SCHEMA,
     TIGHT_SCHEMA,
     UNENFORCEABLE_AGGREGATE_SCHEMA,
     UNENFORCEABLE_RELATIONSHIP_SCHEMA,
@@ -53,8 +57,10 @@ from tests.adversarial.corpus import (
 
 #: Every premise the corpus defines. Used where an invariant must hold under ALL of them --
 #: structural properties such as table shape are not premise-dependent, and testing one only
-#: under the premise that upholds it is how the shape check missed an applied newline
-#: injection that took the table from 6 rows to 7.
+#: under the premise that upholds it is how the shape check previously ran on one arm alone
+#: (an earlier note here that an applied newline injection took the table from 6 rows to 7 is
+#: withdrawn: `splitlines()` counted physical lines of a quoted field while CSV-parsed shape
+#: stayed 6 rows by 5 columns).
 _ALL_PREMISES: tuple[tuple[str, Schema], ...] = (
     ("tight", TIGHT_SCHEMA),
     ("permissive", PERMISSIVE_SCHEMA),
@@ -68,6 +74,10 @@ _ALL_PREMISES: tuple[tuple[str, Schema], ...] = (
     ("primary_key_only", PRIMARY_KEY_ONLY_SCHEMA),
     ("unique_only", UNIQUE_ONLY_SCHEMA),
     ("accepted_values_only", ACCEPTED_VALUES_ONLY_SCHEMA),
+    ("discriminating_type_only", DISCRIMINATING_TYPE_ONLY_SCHEMA),
+    ("regex_only", REGEX_ONLY_SCHEMA),
+    ("domain_bounds_only", DOMAIN_BOUNDS_ONLY_SCHEMA),
+    ("fd_only", FD_ONLY_SCHEMA),
     ("ddl_typical", DDL_TYPICAL_SCHEMA),
 )
 

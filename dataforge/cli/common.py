@@ -177,19 +177,28 @@ def schema_from_mapping(raw_mapping: object) -> Schema:
         for column, bound_payload in raw_bounds.items():
             if not isinstance(bound_payload, dict):
                 continue
+            min_raw = bound_payload.get("min", bound_payload.get("min_value"))
+            max_raw = bound_payload.get("max", bound_payload.get("max_value"))
             bounds.append(
                 DomainBound(
                     column=str(column),
-                    min_value=(
-                        float(bound_payload["min"])
-                        if bound_payload.get("min") is not None
-                        else None
-                    ),
-                    max_value=(
-                        float(bound_payload["max"])
-                        if bound_payload.get("max") is not None
-                        else None
-                    ),
+                    min_value=float(min_raw) if min_raw is not None else None,
+                    max_value=float(max_raw) if max_raw is not None else None,
+                    inclusive_min=bool(bound_payload.get("inclusive_min", True)),
+                    inclusive_max=bool(bound_payload.get("inclusive_max", True)),
+                )
+            )
+    elif isinstance(raw_bounds, list):
+        for bound_payload in raw_bounds:
+            if not isinstance(bound_payload, dict):
+                continue
+            min_raw = bound_payload.get("min", bound_payload.get("min_value"))
+            max_raw = bound_payload.get("max", bound_payload.get("max_value"))
+            bounds.append(
+                DomainBound(
+                    column=str(bound_payload.get("column", "")),
+                    min_value=float(min_raw) if min_raw is not None else None,
+                    max_value=float(max_raw) if max_raw is not None else None,
                     inclusive_min=bool(bound_payload.get("inclusive_min", True)),
                     inclusive_max=bool(bound_payload.get("inclusive_max", True)),
                 )
@@ -232,6 +241,16 @@ def schema_from_mapping(raw_mapping: object) -> Schema:
         domain_bounds=tuple(bounds),
         aggregate_dependencies=tuple(aggregate_dependencies),
     )
+
+
+def schema_to_mapping(schema: Schema) -> dict[str, Any]:
+    """Project a ``Schema`` into a YAML/JSON-serialisable mapping that round-trips
+    through :func:`schema_from_mapping`."""
+    from dataforge.domain.premise import premise_to_canonical
+
+    mapping = dict(premise_to_canonical(schema))
+    mapping.pop("premise_format", None)
+    return mapping
 
 
 def load_schema(schema_path: Path) -> Schema:

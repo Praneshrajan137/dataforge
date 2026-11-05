@@ -58,7 +58,20 @@ def test_wrapper_exports_duckdb_relation_and_writes_transaction(tmp_path: Path) 
     _run_dbt(["seed"], profiles_dir, dbt_project_dir)
     _run_dbt(["run"], profiles_dir, dbt_project_dir)
 
-    request = DispatchRequest(
+    dry_run_request = DispatchRequest(
+        relation="main.example_with_dirty_data",
+        column="column_x",
+        mode="dry_run",
+        input_csv=None,
+        target_path=dbt_project_dir / "target",
+        project_dir=dbt_project_dir,
+        profiles_path=profiles_dir / "profiles.yml",
+        profile_name="dataforge_dbt_integration",
+    )
+    issues = dispatch(dry_run_request)
+    assert any(issue.issue_type == "decimal_shift" for issue in issues)
+
+    apply_request = DispatchRequest(
         relation="main.example_with_dirty_data",
         column="column_x",
         mode="apply",
@@ -68,12 +81,10 @@ def test_wrapper_exports_duckdb_relation_and_writes_transaction(tmp_path: Path) 
         profiles_path=profiles_dir / "profiles.yml",
         profile_name="dataforge_dbt_integration",
     )
-    issues = dispatch(request)
-
-    assert any(issue.issue_type == "decimal_shift" for issue in issues)
-    txn_files = list((dbt_project_dir / "target" / "dataforge_txns").glob("*.jsonl"))
-    assert len(txn_files) == 1
-    assert "decimal_shift" in txn_files[0].read_text(encoding="utf-8")
+    with pytest.raises(DataForgeDbtDispatchError) as excinfo:
+        dispatch(apply_request)
+    assert "no operations" in str(excinfo.value)
+    assert not list((dbt_project_dir / "target" / "dataforge_txns").glob("*.jsonl"))
 
 
 def test_dispatch_logs_known_decimal_shift(
@@ -239,6 +250,75 @@ def test_dispatch_native_duckdb_still_detects_the_issue(tmp_path: Path) -> None:
     )
 
     assert any(issue.issue_type == "decimal_shift" for issue in issues)
+
+
+def test_dispatch_native_duckdb_apply_writes_when_schema_declares_fd(
+    tmp_path: Path,
+) -> None:
+    """When a declared schema provides an FD premise, native DuckDB apply repairs and logs."""
+    import json
+
+    try:
+        import duckdb
+    except ImportError:
+        pytest.skip("duckdb is not installed")
+
+    profiles_dir = _write_profiles(tmp_path)
+    project_dir = tmp_path / "dbt_project"
+    target_dir = project_dir / "target"
+    target_dir.mkdir(parents=True)
+    project_dir.joinpath("dbt_project.yml").write_text(
+        "name: dataforge_dbt_integration\nprofile: dataforge_dbt_integration\n",
+        encoding="utf-8",
+    )
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text(
+        json.dumps(
+            {
+                "columns": {"id": "str", "zip": "str", "city": "str"},
+                "functional_dependencies": [{"determinant": ["zip"], "dependent": "city"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    database_path = tmp_path / "dataforge_dbt.duckdb"
+    with duckdb.connect(str(database_path)) as connection:
+        connection.execute(
+            "CREATE TABLE example_with_dirty_data (id VARCHAR, zip VARCHAR, city VARCHAR)"
+        )
+        connection.execute(
+            "INSERT INTO example_with_dirty_data VALUES "
+            "('1', '02138', 'Cambridge'), ('2', '02138', 'Cambridge'), "
+            "('3', '02138', 'Cambridge'), ('4', '02138', 'Boston')"
+        )
+
+    issues = dispatch(
+        DispatchRequest(
+            relation="main.example_with_dirty_data",
+            column="city",
+            mode="apply",
+            input_csv=None,
+            target_path=target_dir,
+            project_dir=project_dir,
+            profiles_path=profiles_dir / "profiles.yml",
+            profile_name="dataforge_dbt_integration",
+            row_identity_columns=("id",),
+            schema_path=schema_path,
+        )
+    )
+
+    assert any(issue.issue_type == "fd_violation" for issue in issues)
+    with duckdb.connect(str(database_path), read_only=True) as connection:
+        repaired = connection.execute(
+            "SELECT city FROM example_with_dirty_data WHERE id = '4'"
+        ).fetchone()[0]
+    assert repaired == "Cambridge"
+    txn_files = list((target_dir / "dataforge_txns").glob("*.jsonl"))
+    assert len(txn_files) == 1
+    payload = json.loads(txn_files[0].read_text(encoding="utf-8"))
+    assert payload["patch_plan"]["schema_version"] == "patch_plan_v1"
+    assert payload["apply_receipt"]["ok"] is True
 
 
 def test_explicit_mode_overrides_profile_default(tmp_path: Path) -> None:

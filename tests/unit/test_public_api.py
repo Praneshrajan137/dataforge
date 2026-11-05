@@ -59,6 +59,8 @@ EXPECTED_PUBLIC_EXPORTS = {
     "run_all_detectors",
     "run_repair_pipeline",
     "schema_from_mapping",
+    "authoritative_schema_from_dbt_artifacts",
+    "authoritative_schema_from_dbt_manifest",
     "schema_from_dbt_artifacts",
     "schema_from_dbt_manifest",
     "infer_schema",

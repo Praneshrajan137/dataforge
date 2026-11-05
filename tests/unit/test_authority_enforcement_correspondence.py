@@ -21,7 +21,9 @@ Three properties made it serious, and they are the same three that made the 2026
 Measured, by adding ONE field to the permissive premise and changing nothing else
 (``eval/results/trust_ledger_adversarial.json``, ``docs/trust/authority-enforcement-correspondence.md``):
 0 writes became **11**, with **10 of 14** discriminable attacks corrupted -- exactly the
-pre-2026-08-25 ``str`` figure -- and one applied injection took the table from 6 rows to 7.
+pre-2026-08-25 ``str`` figure. (An earlier clause here that one applied injection took the
+table from 6 rows to 7 is withdrawn 2026-09-16: it reported a ``splitlines()`` physical line
+count on a quoted CSV newline while CSV-parsed row and field counts were unchanged.)
 
 **Why N-version diversity could not catch it.** Both verifiers are written from the same
 ``Schema`` specification and both omit the same kinds, so both returned ACCEPT and
@@ -50,10 +52,14 @@ import pytest
 from dataforge.domain.premise import (
     authoritative_columns,
     columns_named_by_constraint_kind,
+    premise_to_canonical,
+    weak_only_authority_columns,
 )
 from dataforge.domain.vocabulary import (
     ENFORCEABLE_CONSTRAINT_KINDS,
+    STRONG_AUTHORITY_CONSTRAINT_KINDS,
     UNENFORCEABLE_CONSTRAINT_KINDS,
+    WEAK_AUTHORITY_CONSTRAINT_KINDS,
     constraint_kind_confers_authority,
 )
 from dataforge.verifier import direct as direct_module
@@ -206,8 +212,7 @@ class TestUnenforceableKindsConferNoAuthority:
     def test_declaring_only_this_kind_covers_nothing(self, kind: str) -> None:
         assert authoritative_columns(self._CASES[kind]) == frozenset(), (
             f"declaring {kind} alone conferred authority. Measured consequence of exactly this: "
-            "11 writes and 10 of 14 corruptions on the adversarial corpus, and a table that "
-            "went from 6 rows to 7"
+            "11 writes and 10 of 14 corruptions on the adversarial corpus"
         )
 
     @pytest.mark.parametrize("kind", sorted(UNENFORCEABLE_CONSTRAINT_KINDS))
@@ -278,3 +283,97 @@ class TestEnforceableKindsStillConferAuthority:
         )
 
         assert authoritative_columns(schema) == frozenset({"zip"})
+
+
+class TestStrongWeakAuthorityPartition:
+    """The K5 empirical power partition of ENFORCEABLE_CONSTRAINT_KINDS must be total and disjoint."""
+
+    def test_strong_and_weak_partition_enforceable_constraint_kinds(self) -> None:
+        assert (
+            STRONG_AUTHORITY_CONSTRAINT_KINDS | WEAK_AUTHORITY_CONSTRAINT_KINDS
+            == ENFORCEABLE_CONSTRAINT_KINDS
+        )
+        assert STRONG_AUTHORITY_CONSTRAINT_KINDS.isdisjoint(WEAK_AUTHORITY_CONSTRAINT_KINDS)
+        assert set(WEAK_AUTHORITY_CONSTRAINT_KINDS) == {"not_null_columns", "unique_columns"}
+
+    def test_weak_only_authority_columns_identifies_weak_only_and_excludes_mixed(self) -> None:
+        assert weak_only_authority_columns(None) == frozenset()
+        schema = Schema(
+            not_null_columns=frozenset({"state", "status"}),
+            unique_columns=frozenset({"code"}),
+            accepted_values=(AcceptedValues(column="status", values=("ok", "err")),),
+        )
+        assert authoritative_columns(schema) == frozenset({"code", "state", "status"})
+        assert weak_only_authority_columns(schema) == frozenset({"code", "state"})
+
+    def test_attestation_authority_check_discloses_weak_only_columns(self) -> None:
+        from dataforge.attestation import (
+            ATTESTATION_VERSION,
+            PREDICATE_TYPE,
+            STATEMENT_TYPE,
+            verify_attestation,
+        )
+
+        weak_schema = Schema(not_null_columns=frozenset({"city"}))
+        strong_schema = Schema(
+            not_null_columns=frozenset({"city"}),
+            accepted_values=(AcceptedValues(column="city", values=("boston",)),),
+        )
+
+        def _make_statement(s: Schema) -> dict[str, object]:
+            return {
+                "_type": STATEMENT_TYPE,
+                "subject": [{"name": "data.csv", "digest": {"sha256": "b" * 64}}],
+                "predicateType": PREDICATE_TYPE,
+                "predicate": {
+                    "attestation_version": ATTESTATION_VERSION,
+                    "tool": {
+                        "name": "dataforge",
+                        "version": "0.1.0",
+                        "contract_version": "repair_contract_v2",
+                    },
+                    "produced_at": "2026-08-13T00:00:00Z",
+                    "mode": "apply",
+                    "applied": True,
+                    "reversible": True,
+                    "source": {"digest": {"sha256": "a" * 64}},
+                    "post": {"digest": {"sha256": "b" * 64}},
+                    "authority": {
+                        "authoritative_columns": ["city"],
+                        "accepted_constraint_ids": ["c1"],
+                        "constraints_digest": {"sha256": "d" * 64},
+                        "constraints": {"not_null_columns": ["city"]},
+                        "premise": premise_to_canonical(s),
+                    },
+                    "fixes": [
+                        {
+                            "row": 0,
+                            "column": "city",
+                            "detector_id": "external",
+                            "provenance": "external",
+                            "verification_strength": "proven",
+                        }
+                    ],
+                    "held": [],
+                    "verdicts": {
+                        "verifier": "accept",
+                        "safety": "allow",
+                        "independent_verification": "not_run",
+                    },
+                    "journal": {"txn_id": "txn-x", "head_sha256": "c" * 64},
+                    "revert_command": "dataforge revert txn-x",
+                    "model": None,
+                    "limitations": [],
+                    "verification": {"checks_available": []},
+                },
+            }
+
+        weak_report = verify_attestation(_make_statement(weak_schema))
+        assert weak_report.ok
+        weak_check = next(c for c in weak_report.checks if c.name == "authority_is_entailed")
+        assert "weak_only_columns=['city']" in weak_check.detail
+
+        strong_report = verify_attestation(_make_statement(strong_schema))
+        assert strong_report.ok
+        strong_check = next(c for c in strong_report.checks if c.name == "authority_is_entailed")
+        assert "weak_only_columns" not in strong_check.detail

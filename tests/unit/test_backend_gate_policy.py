@@ -109,12 +109,20 @@ def test_pip_audit_exception_validator_rejects_an_unjustified_entry() -> None:
 
 #: Every npm advisory the gate is allowed to ignore, listed for the same reason as the pip
 #: set above: an exception must be visible to a reviewer, not buried in a helper.
-EXPECTED_NPM_EXCEPTIONS = [
-    ("GHSA-r28c-9q8g-f849", "postcss"),
-    ("GHSA-fxqj-rqcc-2cmp", "postcss"),
-    ("GHSA-28wg-ghj8-5hjv", "nanoid"),
-    ("GHSA-2v37-7h3g-55p8", "nanoid"),
-]
+#:
+#: EMPTY as of 2026-10-29: the Vite 8.3.5 lockfile bump resolved `postcss`, `nanoid`, and `vite`
+#: with full integrity/resolved hashes and Linux optional packages preserved. Validator tests run
+#: against `SYNTHETIC_NPM_EXCEPTION` so emptying the live list does not make them vacuous.
+EXPECTED_NPM_EXCEPTIONS: list[tuple[str, str]] = []
+
+SYNTHETIC_NPM_EXCEPTION = backend_gate.NpmAuditException(
+    advisory_id="GHSA-0000-0000-0000",
+    package="a-package-that-is-not-installed",
+    scope="synthetic fixture; never installed, never suppressed in a real run",
+    expires_on=date(2099, 1, 1),
+    reason="Exists only so the npm exception validators have a population to act on.",
+    upstream_reference="https://github.com/advisories/GHSA-0000-0000-0000",
+)
 
 
 def _payload(advisory_url: str, *, severity: str = "high", name: str = "somepkg") -> dict:
@@ -128,21 +136,25 @@ def test_npm_audit_exceptions_are_exactly_the_reviewed_set() -> None:
 
 
 def test_npm_audit_exceptions_validate_and_are_unexpired() -> None:
-    assert backend_gate.npm_audit_exception_errors(today=date(2026, 8, 8)) == []
+    assert (
+        backend_gate.npm_audit_exception_errors([SYNTHETIC_NPM_EXCEPTION], today=date(2026, 8, 8))
+        == []
+    )
 
 
 def test_npm_audit_exceptions_expire() -> None:
     """An exception that never expires is a permanently silenced check."""
-    errors = backend_gate.npm_audit_exception_errors(today=date(2026, 11, 9))
+    expiring = replace(SYNTHETIC_NPM_EXCEPTION, expires_on=date(2026, 11, 8))
+    errors = backend_gate.npm_audit_exception_errors([expiring], today=date(2026, 11, 9))
 
     assert errors
     assert any("expired on 2026-11-08" in error for error in errors)
 
 
 def test_a_triaged_advisory_does_not_block() -> None:
-    payload = _payload("https://github.com/advisories/GHSA-r28c-9q8g-f849", name="postcss")
+    payload = _payload("https://github.com/advisories/GHSA-0000-0000-0000", name="somepkg")
 
-    assert backend_gate.npm_audit_blocking_advisories(payload) == []
+    assert backend_gate.npm_audit_blocking_advisories(payload, [SYNTHETIC_NPM_EXCEPTION]) == []
 
 
 def test_an_untriaged_advisory_blocks() -> None:
@@ -237,6 +249,7 @@ def test_canonical_gate_provisions_every_required_optional_surface() -> None:
         "  test-map-validate:", 1
     )[0]
 
+    assert "actions/setup-java@v4" in canonical_job
     assert 'pip install -e "./dataforge-mcp[dev]"' in canonical_job
     assert "pip install -r docs/requirements.txt" in canonical_job
     assert "pip install -r playground/api/requirements.txt" in canonical_job

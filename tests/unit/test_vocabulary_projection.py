@@ -93,3 +93,13 @@ class TestProjectionCoverage:
         assert "CONSTRAINT_CHECKABLE_DETECTORS" in gen._UNPROJECTED
         assert "CONSTRAINT_CHECKABLE_DETECTORS" not in gen.render()
         assert vocabulary.CONSTRAINT_CHECKABLE_DETECTORS
+
+    def test_every_public_symbol_in_vocabulary_is_in_all(self) -> None:
+        """No public constant or helper in vocabulary.py may hide outside __all__."""
+        assert gen._public_module_names() == set(vocabulary.__all__)
+
+    def test_strong_and_weak_authority_kinds_are_projected_into_typescript(self) -> None:
+        """Both halves of the K5 authority-power partition must reach the browser verifier."""
+        rendered = gen.render()
+        assert "export const STRONG_AUTHORITY_CONSTRAINT_KINDS" in rendered
+        assert "export const WEAK_AUTHORITY_CONSTRAINT_KINDS" in rendered

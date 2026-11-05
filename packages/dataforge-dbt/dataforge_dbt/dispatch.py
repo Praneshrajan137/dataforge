@@ -20,12 +20,16 @@ import yaml
 from dataforge import (
     DuckDBStore,
     Issue,
+    Schema,
     Severity,
     TableStoreError,
+    authoritative_schema_from_dbt_manifest,
+    load_schema,
     read_csv,
     run_all_detectors,
     run_table_store_repair,
 )
+from dataforge.domain.premise import authoritative_columns
 from dataforge.table import TableLike
 from pydantic import BaseModel, Field
 
@@ -71,6 +75,7 @@ class DispatchRequest:
     profiles_path: Path | None = None
     profile_name: str | None = None
     row_identity_columns: tuple[str, ...] = ()
+    schema_path: Path | None = None
 
 
 class DbtTransaction(BaseModel):
@@ -162,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         profiles_path=Path(args.profiles_path) if args.profiles_path else None,
         profile_name=args.profile_name,
         row_identity_columns=tuple(args.row_id or ()),
+        schema_path=Path(args.schema) if args.schema else None,
     )
     try:
         dispatch(request)
@@ -189,6 +195,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--profiles-path")
     parser.add_argument("--profile-name")
     parser.add_argument("--row-id", action="append", help="Stable row identity column.")
+    parser.add_argument("--schema", help="Optional DataForge schema path.")
     return parser
 
 
@@ -277,6 +284,7 @@ def _dispatch_table_store_relation(
         raise DataForgeDbtDispatchError("dbt-duckdb profile output is missing path.")
 
     row_ids = request.row_identity_columns or config.row_identity_columns or ("id",)
+    schema = _resolve_table_store_schema(request)
     try:
         store = DuckDBStore(
             database_path=Path(database_path),
@@ -286,7 +294,7 @@ def _dispatch_table_store_relation(
         store_result = run_table_store_repair(
             store,
             mode="dry_run" if config.mode == "refuse" else config.mode,
-            schema=None,
+            schema=schema,
             state_root=request.target_path,
             only_column=request.column,
         )
@@ -312,6 +320,23 @@ def _dispatch_table_store_relation(
             else None,
         )
     return issues
+
+
+def _resolve_table_store_schema(request: DispatchRequest) -> Schema | None:
+    """Resolve an authoritative DataForge Schema from --schema or target/manifest.json."""
+    if request.schema_path is not None:
+        return load_schema(request.schema_path)
+    manifest_path = request.target_path / "manifest.json"
+    if not manifest_path.is_file():
+        return None
+    model_name = request.relation.rsplit(".", 1)[-1].strip('"')
+    with suppress(OSError, ValueError, KeyError):
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            schema = authoritative_schema_from_dbt_manifest(payload, model_name=model_name)
+            if authoritative_columns(schema):
+                return schema
+    return None
 
 
 def _resolve_profiles_path(profiles_path: Path | None) -> Path:

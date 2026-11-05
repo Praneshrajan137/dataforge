@@ -160,6 +160,13 @@ class DirectVerifier:
                     return _unknown(f"Could not encode value for column '{col}' as type '{ctype}'.")
 
         ctype = _normalize_type(schema.column_type(column))
+        if schema.domain_bounds_for(column):
+            try:
+                float(new_value)
+            except (TypeError, ValueError):
+                return _unknown(
+                    f"Could not encode value '{new_value}' for column '{column}' as numeric for domain bound."
+                )
 
         # NOT NULL / PRIMARY KEY not-null (string columns only, mirroring primary).
         if (column in schema.not_null_columns or column in schema.primary_key_columns) and (
@@ -212,8 +219,6 @@ class DirectVerifier:
 
         # DOMAIN BOUNDS: numeric range with inclusive/exclusive endpoints.
         for bound in schema.domain_bounds_for(column):
-            if ctype in _STR_TYPES:
-                continue  # a numeric bound on a string column is out of the well-defined spec
             numeric = float(new_value)
             if bound.min_value is not None:
                 below = (

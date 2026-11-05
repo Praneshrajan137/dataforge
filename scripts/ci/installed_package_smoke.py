@@ -71,8 +71,10 @@ def _run(name: str, command: list[str], *, cwd: Path, steps: list[SmokeStep]) ->
 
 
 def _command(name: str) -> str:
-    """Resolve an installed console command."""
-    resolved = shutil.which(name)
+    """Resolve an installed console command, preferring the active interpreter's bin/Scripts dir."""
+    interpreter_bin = str(Path(sys.executable).resolve().parent)
+    search_path = f"{interpreter_bin}{os.pathsep}{os.environ.get('PATH', '')}"
+    resolved = shutil.which(name, path=search_path)
     if resolved is None:
         raise RuntimeError(f"Could not find installed command {name!r} on PATH.")
     return resolved
@@ -202,6 +204,7 @@ async def _mcp_profile_smoke(workdir: Path) -> None:
             "dataforge_revert",
         }
         assert expected <= names, names
+        assert all(tool.outputSchema for tool in tools.tools)
         profile = await session.call_tool("dataforge_profile", {"path": str(csv_path)})
         assert profile.isError is False
         detect = await session.call_tool("dataforge_detect_errors", {"path": str(csv_path)})

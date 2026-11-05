@@ -62,7 +62,7 @@ describe("attestation conformance (TypeScript)", () => {
     // Mirrors the Python guard: a suite that decayed to a couple of happy paths would
     // pass everything below while proving nothing.
     const names = Object.keys(file.vectors);
-    expect(names.length).toBeGreaterThanOrEqual(15);
+    expect(names.length).toBeGreaterThanOrEqual(35);
     expect(names.filter((n) => file.vectors[n].expect_ok).length).toBeGreaterThanOrEqual(3);
     expect(names.filter((n) => !file.vectors[n].expect_ok).length).toBeGreaterThanOrEqual(10);
   });

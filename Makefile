@@ -33,7 +33,7 @@ help:
 	@echo "  sft-preflight Validate SFT JSONL/config before launching Kaggle"
 	@echo "  coverage      Run tests with coverage using pyproject.toml policy"
 	@echo "  coverage-gate Run tests and FAIL under the 82% coverage floor"
-	@echo "  mutation-gate Run the 25 auto-apply mutants and FAIL if any survives"
+	@echo "  mutation-gate Run the 26 auto-apply mutants and FAIL if any survives"
 	@echo "  bench         Run pytest-benchmark suites"
 	@echo "  bench-free    Run the real-world benchmark scripts and regenerate reports"
 	@echo "  mutation      Run mutmut on dataforge/ (target: >=85%)"
@@ -139,11 +139,11 @@ coverage:
 # NO automated gate read it. `make coverage` above is human-invoked and writes an HTML report
 # nobody's CI opens, so the floor was a configured number with no enforcement -- the same
 # shape as a mutant whose verdict is recorded by hand. This target is the enforcing one:
-# `--cov-fail-under` is passed explicitly rather than relied upon implicitly, because a
-# coverage floor that depends on a config key being picked up is one silent config change
-# away from being decorative again.
+# pytest-cov reads `fail_under = 82` directly from pyproject.toml, and
+# scripts/ci/backend_gate.py's coverage_policy_errors() asserts that pyproject.toml remains
+# the single 82.0 threshold source.
 coverage-gate:
-	$(PYTHON) -m pytest tests/ --cov=dataforge --cov-report=term:skip-covered --cov-fail-under=82
+	$(PYTHON) -m pytest tests/ --cov=dataforge --cov-report=term:skip-covered
 
 # Runs the auto-apply mutation harness and FAILS if any mutant survives. Until 2026-09-01
 # the harness existed, was type-checked, was frozen against removal by
@@ -154,7 +154,7 @@ coverage-gate:
 # would stay green until someone re-ran this by hand.
 #
 # Note this is NOT the `mutation` target below: that one runs mutmut over all of dataforge/
-# as an exploratory metric. This runs 25 hand-written mutants that each target a specific
+# as an exploratory metric. This runs 26 hand-written mutants that each target a specific
 # safety guard and name the test that must notice.
 mutation-gate:
 	$(PYTHON) scripts/ci/mutate_autoapply_guards.py

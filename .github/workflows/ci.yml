@@ -116,6 +116,10 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: playground/web/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

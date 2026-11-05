@@ -60,6 +60,7 @@ __all__ = [
     "INDEPENDENT_VERIFICATION_HUMAN",
     "NEXT_ACTIONS",
     "NEXT_ACTION_HUMAN",
+    "NON_DISCRIMINATING_COLUMN_TYPES",
     "NextAction",
     "OUTCOME_CODES",
     "OUTCOME_CODE_HUMAN",
@@ -73,11 +74,14 @@ __all__ = [
     "SAFETY_VERDICT_HUMAN",
     "SEVERITIES",
     "SEVERITY_ORDER",
+    "STRONG_AUTHORITY_CONSTRAINT_KINDS",
     "TRUSTED_PROVENANCE",
+    "UNENFORCEABLE_CONSTRAINT_KINDS",
     "UNTRUSTED_PROVENANCE",
     "VERIFICATION_STRENGTHS",
     "VERIFIER_VERDICTS",
     "VERIFIER_VERDICT_HUMAN",
+    "WEAK_AUTHORITY_CONSTRAINT_KINDS",
     "Provenance",
     "ReviewReason",
     "Rung",
@@ -85,8 +89,10 @@ __all__ = [
     "Severity",
     "VerificationStrength",
     "VerifierVerdict",
+    "constraint_kind_confers_authority",
     "is_trusted_provenance",
     "rung_for",
+    "type_discriminates",
     "verification_strength_for",
 ]
 
@@ -288,6 +294,46 @@ ENFORCEABLE_CONSTRAINT_KINDS: Final[frozenset[str]] = frozenset(
         "functional_dependencies",
     }
 )
+
+#: Partition of :data:`ENFORCEABLE_CONSTRAINT_KINDS` by measured discriminating power on the
+#: 14-attack adversarial corpus (`eval/results/trust_ledger_adversarial.json`,
+#: `docs/trust/per-kind-authority.md`).
+#:
+#: Strong authority kinds admit at most 3 of 14 discriminable attacks when declared alone:
+#: `accepted_values` (0), `primary_key_columns` (0, inert), `domain_bounds` (1),
+#: `regex_constraints` (2), `columns` (3), and `functional_dependencies` (3).
+STRONG_AUTHORITY_CONSTRAINT_KINDS: Final[frozenset[str]] = frozenset(
+    {
+        "columns",
+        "primary_key_columns",
+        "accepted_values",
+        "regex_constraints",
+        "domain_bounds",
+        "functional_dependencies",
+    }
+)
+
+#: Weak authority kinds admit 9 to 10 of 14 discriminable attacks when declared alone:
+#: `not_null_columns` (9 of 14) and `unique_columns` (10 of 14). Both remain enforceable and
+#: confer write authority when declared directly on a schema, but importers such as
+#: `dataforge.integrations.dbt` withhold them under `authority_mode="strong_only"` and the
+#: attestation verifier discloses when a column's authority rests solely on them.
+WEAK_AUTHORITY_CONSTRAINT_KINDS: Final[frozenset[str]] = frozenset(
+    {
+        "not_null_columns",
+        "unique_columns",
+    }
+)
+
+if (
+    STRONG_AUTHORITY_CONSTRAINT_KINDS | WEAK_AUTHORITY_CONSTRAINT_KINDS
+    != ENFORCEABLE_CONSTRAINT_KINDS
+    or not STRONG_AUTHORITY_CONSTRAINT_KINDS.isdisjoint(WEAK_AUTHORITY_CONSTRAINT_KINDS)
+):  # pragma: no cover - import-time totality guard
+    raise RuntimeError(
+        "STRONG_AUTHORITY_CONSTRAINT_KINDS and WEAK_AUTHORITY_CONSTRAINT_KINDS must form a "
+        "disjoint, total partition of ENFORCEABLE_CONSTRAINT_KINDS."
+    )
 
 #: Constraint kinds that may be DECLARED but confer no write authority, each with the reason.
 #: Declaring one still drives detection and still travels in the constraint IR; it simply

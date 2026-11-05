@@ -201,7 +201,7 @@ class TestHarnessScopeDoesNotWidenProductScope:
         measurable = set(harness.MEASURABLE_DETECTORS)
 
         assert set(CONSTRAINT_CHECKABLE_DETECTORS) < measurable
-        assert {"format_violation", "categorical_normalization"} <= measurable
+        assert {"format_violation", "categorical_normalization", "decimal_shift"} <= measurable
 
     def test_the_two_measured_repairers_gained_no_write_authority(self) -> None:
         """The pre-committed outcome, asserted so it cannot drift.
@@ -209,10 +209,12 @@ class TestHarnessScopeDoesNotWidenProductScope:
         `eval/preregistration/withheld_repairer_coverage.md` pre-committed that neither repairer
         enters the allowlist in the session that measured them, even if no kill criterion fires --
         and `categorical_normalization` did pass both. Passing a REMOVAL criterion is not earning
-        admission, and 38% of its writes are harmful.
+        admission, and 38% of its writes are harmful. `decimal_shift` likewise stays excluded from
+        `CONSTRAINT_CHECKABLE_DETECTORS`.
         """
         assert "format_violation" not in CONSTRAINT_CHECKABLE_DETECTORS
         assert "categorical_normalization" not in CONSTRAINT_CHECKABLE_DETECTORS
+        assert "decimal_shift" not in CONSTRAINT_CHECKABLE_DETECTORS
 
     def test_neither_repairer_is_in_the_deterministic_registry(self) -> None:
         """The second, independent mechanism holding them: they cannot even propose.

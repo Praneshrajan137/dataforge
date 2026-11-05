@@ -51,9 +51,24 @@ ARM_INPUTS: dict[str, str] = {
     "armA": "specs/SPEC_repair_attestation.md",
     "armB": "specs/SPEC_repair_attestation.md + specs/repair_attestation.schema.json",
     "armC": "specs/SPEC_repair_attestation.md (amended)",
+    "armD": (
+        "specs/SPEC_repair_attestation.md + specs/repair_attestation.schema.json "
+        "(with Check 13 & short-circuit rule)"
+    ),
 }
 
 RUN_TIMEOUT_SECONDS = 120
+
+#: Vectors added for Check 13 (`authority_is_entailed`) after Arm C was built and measured.
+#: Arms A, B, and C were built against the 12-check specification and evaluated over the 30
+#: vectors committed at the time; Arm D is evaluated over all 35 vectors.
+VECTORS_ADDED_AFTER_ARM_C: dict[str, str] = {
+    "reject-authority-from-a-non-discriminating-type": "check 13: str type confers no authority",
+    "reject-authority-from-a-type-no-verifier-can-encode": "check 13: date type cannot be encoded by verifiers",
+    "reject-authority-wider-than-the-premise-entails": "check 13: authoritative_columns wider than premise",
+    "reject-premise-with-an-unrecognised-key": "check 13: unknown top-level key in premise",
+    "reject-premise-without-a-recognised-format": "check 13: missing or unrecognised premise_format",
+}
 
 #: Vectors added AFTER arms A and B were built and measured, each with the reason.
 #:
@@ -69,7 +84,11 @@ VECTORS_ADDED_AFTER_MEASUREMENT: dict[str, str] = {
     "reject-data-identity-mismatched-bytes": "data_identity had zero vectors; format extended",
     "reject-signature-from-a-different-key": "section 9 required it and no vector supplied it",
     "reject-unrecognised-statement-type": "mutant A1 survived: only predicateType had a vector",
+    **VECTORS_ADDED_AFTER_ARM_C,
 }
+
+#: Arms built and frozen before Check 13 (`authority_is_entailed`) was added to the specification.
+PRE_CHECK_13_ARMS: frozenset[str] = frozenset({"armA", "armB", "armC"})
 
 
 @dataclass
@@ -277,15 +296,23 @@ def _classify(
 
 
 def measure_arm(arm: str, classes_dir: Path, payload: dict[str, Any]) -> ArmResult:
-    """Run every vector against one arm."""
+    """Run every vector in the arm's cohort against one arm."""
     result = ArmResult(arm=arm, inputs=ARM_INPUTS.get(arm, "unrecorded"))
     pubkey = str(payload["test_public_key_hex"])
     vectors: dict[str, Any] = payload["vectors"]
+    excluded = frozenset(VECTORS_ADDED_AFTER_ARM_C) if arm in PRE_CHECK_13_ARMS else frozenset()
 
     with tempfile.TemporaryDirectory(prefix=f"specsuff_{arm}_") as scratch:
         scratch_dir = Path(scratch)
         for name in sorted(vectors):
+            if name in excluded:
+                continue
             case = vectors[name]
+            expect_failures = (
+                [f for f in case["expect_failures"] if f != "authority_is_entailed"]
+                if arm in PRE_CHECK_13_ARMS
+                else list(case["expect_failures"])
+            )
             document = case["document"]
             # Mirror tests/unit/test_attestation_vectors.py: the key is supplied only when the
             # document is a DSSE envelope, so a disagreement cannot be an artefact of the call.
@@ -315,7 +342,7 @@ def measure_arm(arm: str, classes_dir: Path, payload: dict[str, Any]) -> ArmResu
                     VectorOutcome(
                         vector=name,
                         expect_ok=bool(case["expect_ok"]),
-                        expect_failures=list(case["expect_failures"]),
+                        expect_failures=expect_failures,
                         actual_ok=None,
                         actual_failures=[],
                         reported_checks=[],
@@ -330,13 +357,13 @@ def measure_arm(arm: str, classes_dir: Path, payload: dict[str, Any]) -> ArmResu
                 error = f"{error} (exit {code}: {stderr.strip()[:200]})"
 
             verdict, detail = _classify(
-                bool(case["expect_ok"]), list(case["expect_failures"]), ok, failing, error
+                bool(case["expect_ok"]), expect_failures, ok, failing, error
             )
             result.outcomes.append(
                 VectorOutcome(
                     vector=name,
                     expect_ok=bool(case["expect_ok"]),
-                    expect_failures=list(case["expect_failures"]),
+                    expect_failures=expect_failures,
                     actual_ok=ok,
                     actual_failures=failing,
                     reported_checks=reported,
@@ -448,6 +475,11 @@ def main(argv: list[str] | None = None) -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--report", action="store_true", help="Print results, write nothing.")
     group.add_argument("--emit", action="store_true", help="Write the results artifact.")
+    group.add_argument(
+        "--check",
+        action="store_true",
+        help="Fail with exit 1 if any requested arm disagrees on any vector.",
+    )
     args = parser.parse_args(argv)
 
     arms = args.arm or sorted(ARM_INPUTS)
@@ -457,6 +489,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     _print_report(report)
+
+    if args.check:
+        disagreements = [
+            f"{arm}:{data['vectors_disagreeing']}/{data['vectors_total']}"
+            for arm, data in sorted(report["arms"].items())
+            if data["vectors_disagreeing"] > 0
+        ]
+        if disagreements:
+            print(f"FAIL: clean-room arm disagreement(s): {disagreements}")
+            return 1
 
     if args.emit:
         ARTIFACT.parent.mkdir(parents=True, exist_ok=True)

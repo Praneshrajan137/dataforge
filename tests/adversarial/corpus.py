@@ -39,6 +39,7 @@ from dataforge.detectors.base import (
     AcceptedValues,
     AggregateDependency,
     DomainBound,
+    FunctionalDependency,
     RegexConstraint,
     RelationshipConstraint,
     Schema,
@@ -53,11 +54,15 @@ __all__ = [
     "ACCEPTED_VALUES_ONLY_SCHEMA",
     "COLUMNS",
     "DDL_TYPICAL_SCHEMA",
+    "DISCRIMINATING_TYPE_ONLY_SCHEMA",
+    "DOMAIN_BOUNDS_ONLY_SCHEMA",
+    "FD_ONLY_SCHEMA",
     "GROUND_TRUTH",
     "NON_ENCODABLE_TYPE_SCHEMA",
     "NOT_NULL_ONLY_SCHEMA",
     "PERMISSIVE_SCHEMA",
     "PRIMARY_KEY_ONLY_SCHEMA",
+    "REGEX_ONLY_SCHEMA",
     "TIGHT_SCHEMA",
     "UNENFORCEABLE_AGGREGATE_SCHEMA",
     "UNENFORCEABLE_RELATIONSHIP_SCHEMA",
@@ -248,6 +253,45 @@ DDL_TYPICAL_SCHEMA = Schema(
 #: defect three times. See eval/preregistration/per_kind_authority.md amendment 2 (P9, P10, K8-K10).
 NON_ENCODABLE_TYPE_SCHEMA = Schema(
     columns=dict.fromkeys(COLUMNS, "date"),
+)
+
+# --- The remaining four enforceable kinds (completing 8-of-8 isolation) ---------------
+#
+# Added 2026-10-20 per eval/preregistration/per_kind_authority.md amendment 4.
+# Same one-field discipline: PERMISSIVE_SCHEMA plus one field.
+
+DISCRIMINATING_TYPE_ONLY_SCHEMA = Schema(
+    columns={"id": "int", "city": "str", "state": "str", "zip": "int", "score": "float"},
+)
+
+REGEX_ONLY_SCHEMA = Schema(
+    columns={"id": "str", "city": "str", "state": "str", "zip": "str", "score": "str"},
+    regex_constraints=(
+        RegexConstraint(column="id", pattern=r"^\d+$"),
+        RegexConstraint(column="city", pattern=r"^[a-z]+$"),
+        RegexConstraint(column="state", pattern=r"^[a-z]{2}$"),
+        RegexConstraint(column="zip", pattern=r"^\d{5}$"),
+        RegexConstraint(column="score", pattern=r"^\d+\.\d+$"),
+    ),
+)
+
+DOMAIN_BOUNDS_ONLY_SCHEMA = Schema(
+    columns={"id": "str", "city": "str", "state": "str", "zip": "str", "score": "str"},
+    domain_bounds=(
+        DomainBound(column="id", min_value=1.0, max_value=5.0),
+        DomainBound(column="zip", min_value=60000.0, max_value=69999.0),
+        DomainBound(column="score", min_value=0.0, max_value=100.0),
+    ),
+)
+
+FD_ONLY_SCHEMA = Schema(
+    columns={"id": "str", "city": "str", "state": "str", "zip": "str", "score": "str"},
+    functional_dependencies=(
+        FunctionalDependency(determinant=("city",), dependent="state"),
+        FunctionalDependency(determinant=("city",), dependent="zip"),
+        FunctionalDependency(determinant=("zip",), dependent="city"),
+        FunctionalDependency(determinant=("id",), dependent="score"),
+    ),
 )
 
 

@@ -39,46 +39,10 @@ jobs:
       - name: Installed MCP stdio smoke
         run: |
           python -m venv .release-smoke
-          timeout 60 .release-smoke/bin/python -m pip install --find-links dist dataforge_07_mcp
-          .release-smoke/bin/python - <<'PY'
-          import asyncio
-          import json
-          import os
-          import sys
-          from pathlib import Path
-
-          from mcp import ClientSession, StdioServerParameters
-          from mcp.client.stdio import stdio_client
-
-          workspace = Path("/tmp/dataforge-mcp-smoke")
-          workspace.mkdir(parents=True, exist_ok=True)
-          csv_path = workspace / "amounts.csv"
-          csv_path.write_text(
-              "id,amount\n1,100\n2,105\n3,98\n4,1020\n5,103\n",
-              encoding="utf-8",
-          )
-          env = os.environ.copy()
-          env["DATAFORGE_MCP_ALLOWED_ROOTS"] = str(workspace)
-          command = str(Path(sys.executable).with_name("dataforge-mcp"))
-
-          async def main() -> None:
-              params = StdioServerParameters(command=command, args=["serve"], env=env)
-              async with (
-                  stdio_client(params) as (read_stream, write_stream),
-                  ClientSession(read_stream, write_stream) as session,
-              ):
-                  await session.initialize()
-                  tools = await session.list_tools()
-                  assert tools.tools
-                  assert all(tool.outputSchema for tool in tools.tools)
-                  result = await session.call_tool("dataforge_profile", {"path": str(csv_path)})
-                  assert result.isError is False
-                  payload = result.structuredContent
-                  if "result" in payload:
-                      payload = payload["result"]
-                  assert json.dumps(payload)
-                  assert payload["rows"] == 5
-                  assert payload["total_issues"] >= 1
-
-          asyncio.run(main())
-          PY
+          # Install the built wheel files directly rather than resolving `dataforge_07_mcp` by
+          # name: both pyproject.toml files are versioned 0.1.0, and PyPI already hosts the
+          # 2026-06-03 0.1.0 wheels (which predate `dataforge.ui.trust_vocab`). Resolving by
+          # package name lets pip satisfy `dataforge_07>=0.1.0` from PyPI/cache, causing
+          # `dataforge-mcp serve` to crash at import time with `MCPError: Connection closed`.
+          timeout 60 .release-smoke/bin/python -m pip install --find-links dist dist/dataforge_07-*.whl dist/dataforge_07_mcp-*.whl
+          PATH="$PWD/.release-smoke/bin:$PATH" .release-smoke/bin/python scripts/ci/installed_package_smoke.py --package dataforge_07_mcp

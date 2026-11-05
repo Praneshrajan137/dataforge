@@ -25,9 +25,11 @@ import {
   PROVENANCE_ORDER,
   REVIEW_REASONS,
   SAFETY_VERDICTS,
+  STRONG_AUTHORITY_CONSTRAINT_KINDS,
   TRUSTED_PROVENANCE,
   VERIFICATION_STRENGTHS,
   VERIFIER_VERDICTS,
+  WEAK_AUTHORITY_CONSTRAINT_KINDS,
 } from "../domain/vocabulary.generated";
 
 export const STATEMENT_TYPE = "https://in-toto.io/Statement/v1";
@@ -99,7 +101,7 @@ const PREMISE_FIELDS = new Set<string>([
  * Throws a string reason rather than returning a partial set: a premise that is half-understood
  * would confer authority over whichever fields happened to parse.
  */
-function authoritativeFromPremise(premise: Record<string, unknown>): Set<string> {
+function namedByConstraintKindFromPremise(premise: Record<string, unknown>): Map<string, Set<string>> {
   if (premise.premise_format !== PREMISE_FORMAT) {
     throw `premise_format is ${JSON.stringify(premise.premise_format)}, expected "${PREMISE_FORMAT}"`;
   }
@@ -177,12 +179,7 @@ function authoritativeFromPremise(premise: Record<string, unknown>): Set<string>
     put(field, columns);
   }
 
-  const authoritative = new Set<string>();
-  for (const [kind, columns] of named) {
-    if (!ENFORCEABLE_CONSTRAINT_KINDS.has(kind)) continue;
-    for (const column of columns) authoritative.add(column);
-  }
-  return authoritative;
+  return named;
 }
 
 /** SPEC section 7 check 13. Three cases, and the distinction between them is normative. */
@@ -205,9 +202,9 @@ function authorityIsEntailed(claimed: Set<string>, premise: unknown): Attestatio
   if (!isRecord(premise)) {
     return check("authority_is_entailed", false, "authority.premise must be an object");
   }
-  let entailed: Set<string>;
+  let named: Map<string, Set<string>>;
   try {
-    entailed = authoritativeFromPremise(premise);
+    named = namedByConstraintKindFromPremise(premise);
   } catch (reason) {
     return check(
       "authority_is_entailed",
@@ -215,13 +212,28 @@ function authorityIsEntailed(claimed: Set<string>, premise: unknown): Attestatio
       `the published premise cannot be read, so authority over [${claimedSorted.join(", ")}] cannot be derived from it: ${String(reason)}`,
     );
   }
+  const entailed = new Set<string>();
+  const strongCols = new Set<string>();
+  const weakCols = new Set<string>();
+  for (const [kind, columns] of named) {
+    if (ENFORCEABLE_CONSTRAINT_KINDS.has(kind)) {
+      for (const column of columns) entailed.add(column);
+    }
+    if (STRONG_AUTHORITY_CONSTRAINT_KINDS.has(kind)) {
+      for (const column of columns) strongCols.add(column);
+    } else if (WEAK_AUTHORITY_CONSTRAINT_KINDS.has(kind)) {
+      for (const column of columns) weakCols.add(column);
+    }
+  }
+  const weakOnly = [...weakCols].filter((column) => !strongCols.has(column)).sort();
+  const weakSuffix = weakOnly.length > 0 ? `; weak_only_columns=[${weakOnly.join(", ")}]` : "";
   const overclaimed = claimedSorted.filter((column) => !entailed.has(column));
   const underclaimed = [...entailed].filter((column) => !claimed.has(column)).sort();
   if (overclaimed.length === 0 && underclaimed.length === 0) {
     return check(
       "authority_is_entailed",
       true,
-      `the published premise entails authority over exactly [${claimedSorted.join(", ")}]`,
+      `the published premise entails authority over exactly [${claimedSorted.join(", ")}]${weakSuffix}`,
     );
   }
   const parts: string[] = [];

@@ -47,7 +47,7 @@ def test_the_vector_file_is_a_real_suite() -> None:
     from `NORMATIVE_CHECKS` and every member must be exercised or exempt with a reason.
     """
     vectors = VECTORS["vectors"]
-    assert len(vectors) >= 15, f"only {len(vectors)} vectors; the suite has lost coverage"
+    assert len(vectors) >= 35, f"only {len(vectors)} vectors; the suite has lost coverage"
     accepted = [name for name, case in vectors.items() if case["expect_ok"]]
     rejected = [name for name, case in vectors.items() if not case["expect_ok"]]
     assert len(accepted) >= 3

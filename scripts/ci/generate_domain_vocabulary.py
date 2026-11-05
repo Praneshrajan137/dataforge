@@ -98,6 +98,16 @@ _UNPROJECTED: Final[dict[str, str]] = {
         "The union of the three sets above, withheld with them. Projecting a derived set while "
         "withholding its members would let the browser hold half the rule."
     ),
+    "NON_DISCRIMINATING_COLUMN_TYPES": (
+        "The subtracted half of DISCRIMINATING_COLUMN_TYPES. Since DISCRIMINATING_COLUMN_TYPES "
+        "is already projected as an explicit fail-closed allowlist, projecting the denylist "
+        "alongside it would create a second representation and invite a fail-open denylist check."
+    ),
+    "UNENFORCEABLE_CONSTRAINT_KINDS": (
+        "The complement of the projected ENFORCEABLE_CONSTRAINT_KINDS allowlist. Authority "
+        "checks must test membership in ENFORCEABLE_CONSTRAINT_KINDS directly so unknown kinds "
+        "fail closed; projecting the complement is redundant and invites fail-open checks."
+    ),
     # DISCRIMINATING_COLUMN_TYPES was withheld here on 2026-09-16 and is now PROJECTED, in the same
     # change that added its consumer. The withheld entry read, in full:
     #
@@ -259,6 +269,22 @@ def render() -> str:
         )
     )
     parts.append(
+        _string_set(
+            "STRONG_AUTHORITY_CONSTRAINT_KINDS",
+            vocab.STRONG_AUTHORITY_CONSTRAINT_KINDS,
+            "Enforceable constraint kinds with high discriminating power (0 to 3 of 14 "
+            "adversarial attacks admitted when declared alone).",
+        )
+    )
+    parts.append(
+        _string_set(
+            "WEAK_AUTHORITY_CONSTRAINT_KINDS",
+            vocab.WEAK_AUTHORITY_CONSTRAINT_KINDS,
+            "Enforceable constraint kinds with low discriminating power (9 to 10 of 14 "
+            "adversarial attacks admitted when declared alone: not_null_columns, unique_columns).",
+        )
+    )
+    parts.append(
         """/**
  * True only for a provenance known to be correct by construction.
  *
@@ -390,16 +416,25 @@ export function verificationStrengthFor(
     return "\n".join(parts)
 
 
-def _data_constants() -> dict[str, object]:
-    """Return every data constant exported by the vocabulary, keyed by name.
+_TYPING_IMPORTS: Final[frozenset[str]] = frozenset({"Final", "Literal", "annotations"})
 
-    Data means a collection the browser could need. Type aliases and helper functions are
-    excluded: a ``Literal`` is projected as a union derived from the constant beside it, and a
-    function is behaviour rather than vocabulary.
+
+def _public_module_names() -> set[str]:
+    """Return every public top-level name defined in ``dataforge.domain.vocabulary``."""
+    return {
+        name for name in vars(vocab) if not name.startswith("_") and name not in _TYPING_IMPORTS
+    }
+
+
+def _data_constants() -> dict[str, object]:
+    """Return every data constant in the vocabulary module, keyed by name.
+
+    Derived from ``vars(vocab)`` rather than ``vocab.__all__`` alone so a public constant
+    omitted from ``__all__`` cannot escape the projection-coverage check.
     """
     return {
         name: value
-        for name in vocab.__all__
+        for name in sorted(_public_module_names())
         if isinstance(value := getattr(vocab, name), frozenset | tuple | dict | set | list)
     }
 
@@ -414,9 +449,22 @@ def _projection_coverage_errors(rendered: str) -> list[str]:
     byte compare passes the moment you regenerate, whatever was left out.
 
     Returns:
-        One error string per unaccounted-for constant, in both directions.
+        One error string per unaccounted-for constant or ``__all__`` omission, in both directions.
     """
     errors: list[str] = []
+    public_names = _public_module_names()
+    exported_names = set(vocab.__all__)
+    for missing_export in sorted(public_names - exported_names):
+        errors.append(
+            f"vocabulary.{missing_export} is a public symbol in dataforge/domain/vocabulary.py "
+            "but is omitted from __all__. Add it to __all__ so the module's public surface and "
+            "the projection gate agree."
+        )
+    for phantom_export in sorted(exported_names - public_names):
+        errors.append(
+            f"vocabulary.__all__ lists {phantom_export!r}, which is not a public symbol in "
+            "dataforge/domain/vocabulary.py."
+        )
     constants = _data_constants()
     projected = {name for name in constants if f"export const {name}" in rendered}
 

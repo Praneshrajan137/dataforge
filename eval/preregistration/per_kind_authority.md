@@ -428,3 +428,68 @@ passed. The gate has been seen to fail on the case it newly covers.
 
 
 
+---
+
+## Amendment 4 — Pre-registration of the remaining four enforceable kinds and a `domain_bounds` verifier defect, 2026-10-20
+
+Written **before** adding the four arms or running `scripts/measure_trust_ledger.py`.
+
+### Why this amendment exists
+
+`docs/trust/per-kind-authority.md:104-109` stated an explicit gap:
+
+> `regex_constraints`, `domain_bounds`, `functional_dependencies` and discriminating `columns` were **not** measured in isolation; only `accepted_values`, `not_null`, `unique` and `primary_key` were. Four of the eight kinds therefore have no per-kind number, and this document does not supply one.
+
+Completing the 8-of-8 isolation matrix under the same one-field discipline (`PERMISSIVE_SCHEMA` plus one field) surfaced a verifier correspondence defect during pre-run hand-tracing before any code was executed:
+
+- `tests/unit/test_column_scoped_authority.py:203-209` and `tests/unit/test_authority_enforcement_correspondence.py:244` assert that `Schema(columns={}, domain_bounds=...)` confers write authority over the bounded column.
+- When `columns` is empty or maps the column to `"str"` ( as in `PERMISSIVE_SCHEMA` + `domain_bounds`), `schema.column_type(column)` is `"str"`.
+- In `DirectVerifier` (`dataforge/verifier/direct.py:215`), `if ctype in _STR_TYPES: continue` silently skips `domain_bounds` on `"str"` columns and returns `ACCEPT`.
+- In `SMTVerifier` (`dataforge/verifier/smt.py:508`), `_track_domain_bound` compares a `StringSort()` expression against `RealVal(str(bound.min_value))` (`RealSort()`), raising an uncaught `z3.z3types.Z3Exception: Sort mismatch`.
+- `tests/property/test_verifier_equivalence.py:73` hid this disagreement by restricting `DomainBound` generation to `int_columns` (`# Domain bound on an int column (shared well-defined regime)`).
+
+Both verifiers are updated so a `DomainBound` on a `"str"` column attempts `float(new_value)` (returning `UNKNOWN` if uncoercible, matching `float`-column parity, and `REJECT` if the numeric value violates `min_value` or `max_value`), and `test_verifier_equivalence.py` is widened to generate `DomainBound` on any column.
+
+### Pre-committed definitions and predictions (P11–P15)
+
+| Arm | Definition (`PERMISSIVE_SCHEMA` + 1 field) | Predicted `corruptions` (of 14) | Predicted `corrections` | Predicted `cells_held` | Predicted `corrupting_attacks` |
+| --- | --- | --- | --- | --- | --- |
+| `discriminating_type_only` | `columns={"id": "int", "city": "str", "state": "str", "zip": "int", "score": "float"}` | **3** | **1** | **10** | `out-of-bounds-score`, `trailing-whitespace-in-zip`, `zip-failing-its-pattern` |
+| `regex_only` | `regex_constraints` with format patterns (`id: ^\d+$`, `city: ^[a-z]+$`, `state: ^[a-z]{2}$`, `zip: ^\d{5}$`, `score: ^\d+\.\d+$`) | **2** | **1** | **11** | `out-of-bounds-score`, `unlisted-category-in-state` |
+| `domain_bounds_only` | `domain_bounds` on the numeric columns (`id: [1, 5]`, `zip: [60000, 69999]`, `score: [0, 100]`) | **1** | **1** | **12** | `trailing-whitespace-in-zip` |
+| `fd_only` | `functional_dependencies` (`city -> state`, `city -> zip`, `zip -> city`, `id -> score`) | **3** | **1** | **10** | `empty-string-into-score`, `out-of-bounds-score`, `type-violating-score` |
+
+- **P11 (`discriminating_type_only`)**: Corrupts **3 of 14**, keeps **1** repair. `str` confers no authority on `city`/`state` (blocking 5 attacks), while Python's `int("62701 ")` accepts trailing whitespace, `int("627011")` has no digit-count check, and `float("1000000.0")` has no range bound.
+- **P12 (`regex_only`)**: Corrupts **2 of 14**, keeps **1** repair. Lexical patterns reject confusables, trailing whitespace, empty strings, non-numerics, wrong-length zips, and CSV injections, but admit in-format values that violate numeric range (`"1000000.0"`) or closed category membership (`"zz"`).
+- **P13 (`domain_bounds_only`)**: Corrupts **1 of 14** (`trailing-whitespace-in-zip`, since `float("62701 ") == 62701.0` is within `[60000.0, 69999.0]`), keeps **1** repair, and rejects both `out-of-bounds-score` and `zip-failing-its-pattern`.
+- **P14 (`fd_only`)**: Corrupts **3 of 14**, keeps **1** repair. Peer rows sharing `"springfield"`/`"62701"` (rows 0 and 4) and `"chicago"`/`"60601"` (rows 1 and 3) reject every attack on `city`, `state`, and `zip`; `id="1"` is a singleton determinant group with zero peer rows, so `id -> score` is vacuous on row 0 and admits all 3 `score` attacks.
+- **P15 / K11**: Adding the four arms and the `domain_bounds` verifier parity fix leaves all 10 pre-existing arms in `eval/results/trust_ledger_adversarial.json` field-for-field unchanged.
+
+---
+
+## Amendment 5 — Results of the 8-of-8 per-kind isolation matrix, 2026-10-20
+
+Appended after running `python scripts/measure_trust_ledger.py --write`. Raw outcomes committed in `eval/results/trust_ledger_adversarial.json`.
+
+### Complete 8-of-8 isolation table, `discriminable` subset (n=14)
+
+| Enforceable kind | Arm | Corrupted | Corrected | Held | `corrupting_attacks` |
+| --- | --- | --- | --- | --- | --- |
+| `accepted_values` | `accepted_values_only` | **0** | 1 | 13 | none |
+| `domain_bounds` | `domain_bounds_only` | **1** | 1 | 12 | `trailing-whitespace-in-zip` |
+| `regex_constraints` | `regex_only` | **2** | 1 | 11 | `out-of-bounds-score`, `unlisted-category-in-state` |
+| `columns` (discriminating types) | `discriminating_type_only` | **3** | 1 | 10 | `out-of-bounds-score`, `trailing-whitespace-in-zip`, `zip-failing-its-pattern` |
+| `functional_dependencies` | `fd_only` | **3** | 1 | 10 | `empty-string-into-score`, `out-of-bounds-score`, `type-violating-score` |
+| `not_null_columns` | `not_null_only` | **9** | 1 | 4 | 9 attacks (blocks only `empty-string-into-score` + 3 structural) |
+| `unique_columns` | `unique_only` | **10** | 1 | 3 | 10 attacks (even `empty-string-into-score` passes uniqueness) |
+| `primary_key_columns` | `primary_key_only` | **0** | **0** | 14 | **inert** (`wrongly_blocked: ['correct-score-repair']`) |
+
+### Scorecard (P11–P15)
+
+| # | Prediction | Verdict | Evidence |
+| --- | --- | --- | --- |
+| **P11** | `discriminating_type_only` corrupts 3, corrects 1 | **CONFIRMED, exact attack set** | `['out-of-bounds-score', 'trailing-whitespace-in-zip', 'zip-failing-its-pattern']` |
+| **P12** | `regex_only` corrupts 2, corrects 1 | **CONFIRMED, exact attack set** | `['out-of-bounds-score', 'unlisted-category-in-state']` |
+| **P13** | `domain_bounds_only` corrupts 1, corrects 1 | **CONFIRMED, exact attack set** | `['trailing-whitespace-in-zip']` (`float("62701 ") == 62701.0`) |
+| **P14** | `fd_only` corrupts 3, corrects 1 | **CONFIRMED, exact attack set** | `['empty-string-into-score', 'out-of-bounds-score', 'type-violating-score']` (singleton determinant `id="1"`) |
+| **P15 / K11** | Pre-existing arms unchanged | **CONFIRMED** | K1 check passed; zero diffs on all 10 prior arms |

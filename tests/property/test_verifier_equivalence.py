@@ -59,7 +59,6 @@ def _schema_table_fix(
     df = pd.DataFrame(data)
 
     columns = list(col_types)
-    int_columns = [c for c in columns if col_types[c] == "int"]
     str_columns = [c for c in columns if col_types[c] == "str"]
 
     domain_bounds: list[DomainBound] = []
@@ -69,9 +68,10 @@ def _schema_table_fix(
     not_null: set[str] = set()
     unique: set[str] = set()
 
-    # Domain bound on an int column (shared well-defined regime).
-    if int_columns and draw(st.booleans()):
-        col = draw(st.sampled_from(int_columns))
+    # Domain bound on any column (both verifiers coerce string-typed cells via float
+    # and return UNKNOWN when uncoercible).
+    if draw(st.booleans()):
+        col = draw(st.sampled_from(columns))
         lo = draw(st.integers(min_value=0, max_value=5))
         hi = draw(st.integers(min_value=lo, max_value=50))
         domain_bounds.append(

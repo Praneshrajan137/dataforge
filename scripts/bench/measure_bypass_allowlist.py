@@ -62,6 +62,7 @@ from dataforge.detectors.base import Issue, Schema  # noqa: E402
 from dataforge.detectors.categorical_normalization import (  # noqa: E402
     CategoricalNormalizationDetector,
 )
+from dataforge.detectors.decimal_shift import DecimalShiftDetector  # noqa: E402
 from dataforge.detectors.fd_violation import FDViolationDetector  # noqa: E402
 from dataforge.detectors.format_violation import FormatViolationDetector  # noqa: E402
 from dataforge.detectors.missing_value import MissingValueDetector  # noqa: E402
@@ -71,6 +72,7 @@ from dataforge.repairers.base import ProposedFix  # noqa: E402
 from dataforge.repairers.categorical_normalization import (  # noqa: E402
     CategoricalNormalizationRepairer,
 )
+from dataforge.repairers.decimal_shift import DecimalShiftRepairer  # noqa: E402
 from dataforge.repairers.fd_violation import FDViolationRepairer  # noqa: E402
 from dataforge.repairers.format_violation import FormatViolationRepairer  # noqa: E402
 from dataforge.repairers.missing_value import MissingValueRepairer  # noqa: E402
@@ -108,6 +110,7 @@ class _Repairer(Protocol):
 #: withheld. Pre-registered in ``eval/preregistration/withheld_repairer_coverage.md``.
 MEASURABLE_DETECTORS: Final[tuple[str, ...]] = (
     "categorical_normalization",
+    "decimal_shift",
     "fd_violation",
     "format_violation",
     "missing_value",
@@ -125,8 +128,10 @@ MEASURABLE_DETECTORS: Final[tuple[str, ...]] = (
 #: REPLACES the retired 0.7926 headline with per-detector unconditional write measurement, so a
 #: silent hole in its population is a hole in the evidence that replaced a headline.
 #:
-#: Two of the three are genuine scope decisions. The third is an open gap and is recorded as one
-#: rather than dressed as a decision.
+#: ``decimal_shift`` was moved from this exclusion map into ``MEASURABLE_DETECTORS`` on 2026-10-20
+#: so all six deterministic/withheld repairers are directly measurable by this harness; the two
+#: remaining entries are genuine architectural scope exclusions (LLM corrector and provenance-held
+#: consensus).
 UNMEASURED_DETECTORS: Final[dict[str, str]] = {
     "outlier": (
         "Registered only under allow_llm, where `registry['outlier']` IS the LLM corrector object. "
@@ -139,23 +144,14 @@ UNMEASURED_DETECTORS: Final[dict[str, str]] = {
         "PROVENANCE rather than by the calibration bypass this harness measures. Admitting it here "
         "would report a bypass figure for a repairer that never reaches the bypass."
     ),
-    "decimal_shift": (
-        "OPEN GAP, not a scope decision. It is in the deterministic registry and it is the "
-        "detector this project REMOVED from the bypass after measuring precision 0.0000 on three "
-        "corpora and 263,428 false rewrites on a fourth -- the exact motivation for "
-        "docs/trust/bypass-allowlist-evidence.md, which this harness feeds. It is measurable in "
-        "principle and has never been measured here. Recorded so the absence is findable; closing "
-        "it needs its own pre-registration, because a fourth-corpus rerun is what removed it and "
-        "re-measuring it must not read as re-admitting it."
-    ),
 }
 
 #: Detectors whose repairer reads no premise, so a premised arm would be identical by construction.
 #: Reporting two arms for these would imply a premise sensitivity that does not exist:
 #: ``format_violation`` accepts a ``schema`` and never reads it, and
-#: ``categorical_normalization`` executes ``del retry_context, schema`` on its first line.
+#: ``categorical_normalization`` and ``decimal_shift`` execute ``del ... schema`` on their first line.
 UNPREMISED_DETECTORS: Final[frozenset[str]] = frozenset(
-    {"type_mismatch", "format_violation", "categorical_normalization"}
+    {"type_mismatch", "format_violation", "categorical_normalization", "decimal_shift"}
 )
 
 
@@ -231,6 +227,8 @@ def _build(detector_id: str) -> tuple[_Detector, _Repairer]:
         return FormatViolationDetector(), _ProfileMemoRepairer()
     if detector_id == "categorical_normalization":
         return CategoricalNormalizationDetector(), CategoricalNormalizationRepairer()
+    if detector_id == "decimal_shift":
+        return DecimalShiftDetector(), DecimalShiftRepairer()
     raise ValueError(f"no harness wired for detector {detector_id!r}")
 
 

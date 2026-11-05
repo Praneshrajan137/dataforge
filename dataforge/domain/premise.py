@@ -49,7 +49,12 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
-from dataforge.domain.vocabulary import constraint_kind_confers_authority, type_discriminates
+from dataforge.domain.vocabulary import (
+    STRONG_AUTHORITY_CONSTRAINT_KINDS,
+    WEAK_AUTHORITY_CONSTRAINT_KINDS,
+    constraint_kind_confers_authority,
+    type_discriminates,
+)
 from dataforge.verifier.schema import (
     AcceptedValues,
     AggregateDependency,
@@ -71,6 +76,7 @@ __all__ = [
     "conferring_kinds",
     "premise_from_canonical",
     "premise_to_canonical",
+    "weak_only_authority_columns",
 ]
 
 #: The wire format's identity, carried inside every published premise.
@@ -374,6 +380,28 @@ def conferring_kinds(schema: Schema) -> dict[str, frozenset[str]]:
         for kind, columns in columns_named_by_constraint_kind(schema).items()
         if columns and constraint_kind_confers_authority(kind)
     }
+
+
+def weak_only_authority_columns(schema: Schema | None) -> frozenset[str]:
+    """Return authoritative columns covered ONLY by weak authority kinds (``not_null``, ``unique``).
+
+    Per ``docs/trust/per-kind-authority.md`` and ``eval/preregistration/per_kind_authority.md``
+    (K5), ``not_null_columns`` and ``unique_columns`` alone admit 9 and 10 of 14 discriminable
+    adversarial attacks, whereas every kind in ``STRONG_AUTHORITY_CONSTRAINT_KINDS`` narrows the
+    value space of the cell itself. A column covered by both a weak kind and a strong kind (for
+    example ``not_null`` plus ``accepted_values``) is NOT weak-only.
+    """
+    if schema is None:
+        return frozenset()
+    named = columns_named_by_constraint_kind(schema)
+    strong_cols: set[str] = set()
+    weak_cols: set[str] = set()
+    for kind, columns in named.items():
+        if kind in STRONG_AUTHORITY_CONSTRAINT_KINDS:
+            strong_cols |= columns
+        elif kind in WEAK_AUTHORITY_CONSTRAINT_KINDS:
+            weak_cols |= columns
+    return frozenset(weak_cols - strong_cols)
 
 
 def authoritative_columns(schema: Schema | None) -> frozenset[str]:

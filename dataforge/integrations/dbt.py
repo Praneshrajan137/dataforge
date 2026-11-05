@@ -31,9 +31,12 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+from dataforge.domain.vocabulary import WEAK_AUTHORITY_CONSTRAINT_KINDS
 from dataforge.verifier.schema import AcceptedValues, RelationshipConstraint, Schema
+
+DbtAuthorityMode = Literal["all_enforceable", "strong_only"]
 
 
 def schema_from_dbt_artifacts(
@@ -41,6 +44,7 @@ def schema_from_dbt_artifacts(
     *,
     model_name: str | None = None,
     model_unique_id: str | None = None,
+    authority_mode: DbtAuthorityMode = "all_enforceable",
 ) -> Schema:
     """Load a dbt manifest and map supported generic tests into a ``Schema``."""
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -50,6 +54,44 @@ def schema_from_dbt_artifacts(
         payload,
         model_name=model_name,
         model_unique_id=model_unique_id,
+        authority_mode=authority_mode,
+    )
+
+
+def authoritative_schema_from_dbt_artifacts(
+    manifest_path: Path,
+    *,
+    model_name: str | None = None,
+    model_unique_id: str | None = None,
+) -> Schema:
+    """Load a dbt manifest with weak authority kinds (``not_null``, ``unique``) withheld.
+
+    Per ``docs/trust/per-kind-authority.md`` and ``eval/preregistration/per_kind_authority.md``
+    (K5), ``not_null`` and ``unique`` alone admit 9 and 10 of 14 discriminable attacks on the
+    adversarial corpus while ``accepted_values`` alone admits 0. Use this helper to derive the
+    ``repair_schema`` that grants write authority while passing the full
+    :func:`schema_from_dbt_artifacts` result for detection and verification.
+    """
+    return schema_from_dbt_artifacts(
+        manifest_path,
+        model_name=model_name,
+        model_unique_id=model_unique_id,
+        authority_mode="strong_only",
+    )
+
+
+def authoritative_schema_from_dbt_manifest(
+    manifest: Mapping[str, Any],
+    *,
+    model_name: str | None = None,
+    model_unique_id: str | None = None,
+) -> Schema:
+    """Map a dbt manifest into an authority-safe ``Schema`` (``authority_mode='strong_only'``)."""
+    return schema_from_dbt_manifest(
+        manifest,
+        model_name=model_name,
+        model_unique_id=model_unique_id,
+        authority_mode="strong_only",
     )
 
 
@@ -58,6 +100,7 @@ def schema_from_dbt_manifest(
     *,
     model_name: str | None = None,
     model_unique_id: str | None = None,
+    authority_mode: DbtAuthorityMode = "all_enforceable",
 ) -> Schema:
     """Map supported dbt generic tests from a manifest into DataForge constraints.
 
@@ -110,10 +153,21 @@ def schema_from_dbt_manifest(
                     )
                 )
 
+    if authority_mode not in {"all_enforceable", "strong_only"}:
+        raise ValueError(f"Unsupported authority_mode: {authority_mode!r}")
+    include_weak = authority_mode == "all_enforceable"
     return Schema(
         columns=columns,
-        not_null_columns=frozenset(not_null_columns),
-        unique_columns=frozenset(unique_columns),
+        not_null_columns=(
+            frozenset(not_null_columns)
+            if include_weak or "not_null_columns" not in WEAK_AUTHORITY_CONSTRAINT_KINDS
+            else frozenset()
+        ),
+        unique_columns=(
+            frozenset(unique_columns)
+            if include_weak or "unique_columns" not in WEAK_AUTHORITY_CONSTRAINT_KINDS
+            else frozenset()
+        ),
         accepted_values=tuple(accepted_values),
         relationships=tuple(relationships),
     )

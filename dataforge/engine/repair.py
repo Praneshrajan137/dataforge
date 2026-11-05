@@ -481,13 +481,23 @@ class RepairPipelineRequest(BaseModel):
 
 
 class RepairPipelineResult(BaseModel):
-    """Output contract for a public repair pipeline run."""
+    """Output contract for a public repair pipeline run.
+
+    ``authority_schema`` carries the in-memory ``Schema`` that ``receipt.authoritative_columns``
+    was computed from (either the declared schema or, under
+    ``mined_constraints_grant_write_authority=True``, the declared schema merged with accepted
+    mined constraints). Excluded from JSON serialisation so the public wire contract of
+    ``RepairPipelineResult.model_dump()`` is unchanged, while allowing ``attest_result`` to
+    project the exact effective premise into ``dataforge.premise/v1`` even when write authority
+    includes accepted mined constraints that live outside the ``--schema`` file.
+    """
 
     receipt: RepairReceipt
     issues: list[Issue]
     fixes: list[VerifiedFix]
     failures: list[RepairFailure] = Field(default_factory=list)
     transaction: RepairTransaction | None = None
+    authority_schema: Schema | None = Field(default=None, exclude=True)
 
     model_config = ConfigDict(
         strict=True, arbitrary_types_allowed=True, extra="forbid", frozen=True
@@ -2129,6 +2139,7 @@ def run_repair_pipeline(
         fixes=verified_fixes,
         failures=failures,
         transaction=transaction,
+        authority_schema=authority_schema,
     )
 
 
@@ -2231,11 +2242,12 @@ def verify_and_apply(request: VerifyAndApplyRequest) -> RepairPipelineResult:
     # column is covered. Letting an accepted MINED constraint confer that cover is the exact
     # shape of the 2026-08-09 defect -- narrow evidence granting authority over a value nobody
     # checked -- with the evidence now coming from the miner rather than from the user.
-    covered_columns = authoritative_columns(
+    authority_schema = (
         effective_schema
         if request.mined_constraints_grant_write_authority
         else request.repair_schema
     )
+    covered_columns = authoritative_columns(authority_schema)
     verification_schema = infer_verification_schema(df) if effective_schema is None else None
 
     safety_filter = SafetyFilter()
@@ -2453,4 +2465,5 @@ def verify_and_apply(request: VerifyAndApplyRequest) -> RepairPipelineResult:
         fixes=verified_fixes,
         failures=[],
         transaction=None,
+        authority_schema=authority_schema,
     )

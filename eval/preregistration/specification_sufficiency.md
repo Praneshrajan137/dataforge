@@ -477,3 +477,56 @@ Nine confirmed, three refuted, none unscored. The three refutations are the most
 the document: P5 identified a defect class nobody had named, P10 established that the reference
 implementation was the outlier, and P11 stopped the amendments being declared sufficient on the
 strength of having been made.
+
+
+---
+
+## Amendment 4 — Pre-registration of Arm D (13-check specification and signature short-circuit), 2026-10-20
+
+Written **before** building or running Arm D.
+
+### Why a fourth arm is required
+
+Two normative additions have been made to `specs/SPEC_repair_attestation.md` since Arm C was built, and both documents (`docs/trust/specification-sufficiency.md:173-174` and `docs/trust/premise-binding.md:111-115`) explicitly state that neither has been tested by a clean-room reader:
+
+1. **The signature short-circuit rule (§7).** Arm C scored 29 of 30 because §7 did not specify whether a failing `signature` check stops the remaining checks on an untrusted payload. §7 was amended after Arm C to state the short-circuit rule explicitly.
+2. **Check 13 (`authority_is_entailed`, §6.4.1–6.4.2 and §7.13).** Added on 2026-09-16 along with five rejection vectors (enlarging the suite from 30 to 35 vectors), publishing `dataforge.premise/v1`, `DISCRIMINATING_COLUMN_TYPES`, and `ENFORCEABLE_CONSTRAINT_KINDS` in the specification.
+
+Also noted here before running: when the five check-13 vectors were added to `tests/fixtures/attestation/vectors.json`, they were not added to `VECTORS_ADDED_AFTER_MEASUREMENT` in `scripts/bench/measure_specification_sufficiency.py`. They are registered in `VECTORS_ADDED_AFTER_ARM_C` (and unioned into `VECTORS_ADDED_AFTER_MEASUREMENT`) so the 26-vector original baseline and the 30-vector Arm C cohort remain frozen.
+
+### Pre-committed prediction and kill criteria
+
+| # | Prediction |
+| --- | --- |
+| **P12** | **Arm D**, built in Java 17 (standard library only) by an isolated agent given only `specs/SPEC_repair_attestation.md` and `specs/repair_attestation.schema.json`, emits all **13** normative check names and agrees with the reference verifier on **35 of 35** committed vectors (`1.0000` over all 35, `1.0000` over the 30-vector Arm C cohort, `1.0000` over the 26-vector baseline). |
+
+**K1–K7 apply unchanged.** Any K1 contamination voids the arm; any well-formed semantic disagreement refutes P12 and is scored as a specification defect rather than patched in Arm D.
+
+
+---
+
+## Amendment 5 — Arm D result, P12 CONFIRMED (35 of 35), and K1 audit, 2026-10-20
+
+### Result
+
+| Arm | Given | Over the original 26 | Over the 30-vector cohort | Over all 35 | Checks |
+| --- | --- | --- | --- | --- | --- |
+| **A** | markdown only (11-check spec) | 17 of 26 — 0.6538 | 21 of 30 — 0.7000 | — | 11 |
+| **B** | markdown + schema, before | 3 of 26 — 0.1154 | 3 of 30 — 0.1000 | — | 12, one misnamed |
+| **C** | markdown + schema, after 12-check amendments | 25 of 26 — 0.9615 | 29 of 30 — 0.9667 | — | 12, all correctly named |
+| **D** | markdown + schema, with Check 13 & short-circuit rule | 26 of 26 — **1.0000** | 30 of 30 — **1.0000** | 35 of 35 — **1.0000** | 13, all correctly named |
+
+**P12 is CONFIRMED.** On its first and only run (no K6 instrument intervention, no post-run edit to `Verify.java`), Arm D agreed with the reference verifier on **35 of 35** committed conformance vectors (`1.0000` over all 35, `1.0000` over the 30-vector Arm C cohort, `1.0000` over the 26-vector baseline) and emitted all **13** normative check names (`authority_is_entailed`, `constraints_present`, `data_identity`, `envelope_recognised`, `reversibility_complete`, `schema_complete`, `signature`, `strength_is_earned`, `subject_matches_post_state`, `verdicts_accepting`, `version_recognised`, `vocabulary_closed`, `witness_is_coherent`).
+
+Both changes since Arm C were exercised and confirmed:
+- On `reject-tampered-signed-payload` (the single vector Arm C missed), Arm D applied §7's DSSE signature short-circuit rule and reported `signature` alone.
+- On all five Check 13 rejection vectors (`reject-authority-from-a-non-discriminating-type`, `reject-authority-from-a-type-no-verifier-can-encode`, `reject-authority-wider-than-the-premise-entails`, `reject-premise-with-an-unrecognised-key`, `reject-premise-without-a-recognised-format`) and on `reject-schema-proven-without-embedded-constraints` (which fails both `authority_is_entailed` and `constraints_present`), Arm D agreed with the reference verifier on both `ok` and the exact failure list.
+
+### Historical cohort preservation in the runner
+
+When Check 13 was added on 2026-09-16, `tests/fixtures/attestation/vectors.json` gained five new vectors and added `"authority_is_entailed"` to the `expect_failures` list of the existing vector `reject-schema-proven-without-embedded-constraints`. In `scripts/bench/measure_specification_sufficiency.py`, `PRE_CHECK_13_ARMS = frozenset({"armA", "armB", "armC"})` excludes `VECTORS_ADDED_AFTER_ARM_C` and projects `expect_failures` without `"authority_is_entailed"` for those three pre-Check-13 arms, while evaluating `armD` against the full 35-vector, 13-check suite. This keeps all historical figures for Arms A, B, and C identical to their pre-registered measurements.
+
+### K1 audit: method and result
+
+1. **Transcript audit (`e701f33f-40c6-42b0-934d-7024a9a7d438`).** The subagent's entire tool-call log consists of two `view_file` calls (`specs/SPEC_repair_attestation.md` and `specs/repair_attestation.schema.json`) followed by `send_message` delivering `NOTES.md` and `Verify.java`. Zero other files were read, listed, or searched.
+2. **Source grep audit (`eval/cleanroom/armD/Verify.java`).** Grepping for Python/TypeScript implementation-only identifiers (`verification_strength_for`, `AttestationCheck`, `verify_attestation`, `NORMATIVE_CHECKS`, `CLOSED_VOCABULARIES`, `_check_strength`, `_check_witness`, `_check_authority_entailed`, `premise_from_canonical`, and the Python's distinctive clause `"not entailed by the rule"`) returned **zero** matches. And unlike Arms B and C, Arm D's narrative report (`eval/cleanroom/armD/NOTES.md`) was preserved in full.

@@ -2,7 +2,7 @@
  * GENERATED FILE -- DO NOT EDIT BY HAND.
  *
  * Source:      dataforge/domain/vocabulary.py
- * Source hash: sha256:85814b9429c9918b0120f45abb88795e92b9ca3de0111cae7f3a6d4886868d95
+ * Source hash: sha256:8f26d0c7b7f9287f694a6a7dbb2ca455bd47a15464c621aeb62b0b01030e59c9
  * Generator:   scripts/ci/generate_domain_vocabulary.py
  * Verify:      python scripts/ci/generate_domain_vocabulary.py --check
  *              (or, without Python: npm run audit:vocabulary)
@@ -50,6 +50,12 @@ export const DISCRIMINATING_COLUMN_TYPES: ReadonlySet<string> = new Set(["decima
 
 /** Schema constraint kinds a verifier can reject on, so they may confer write authority. The other three name columns without constraining them. */
 export const ENFORCEABLE_CONSTRAINT_KINDS: ReadonlySet<string> = new Set(["accepted_values", "columns", "domain_bounds", "functional_dependencies", "not_null_columns", "primary_key_columns", "regex_constraints", "unique_columns"]);
+
+/** Enforceable constraint kinds with high discriminating power (0 to 3 of 14 adversarial attacks admitted when declared alone). */
+export const STRONG_AUTHORITY_CONSTRAINT_KINDS: ReadonlySet<string> = new Set(["accepted_values", "columns", "domain_bounds", "functional_dependencies", "primary_key_columns", "regex_constraints"]);
+
+/** Enforceable constraint kinds with low discriminating power (9 to 10 of 14 adversarial attacks admitted when declared alone: not_null_columns, unique_columns). */
+export const WEAK_AUTHORITY_CONSTRAINT_KINDS: ReadonlySet<string> = new Set(["not_null_columns", "unique_columns"]);
 
 /**
  * True only for a provenance known to be correct by construction.

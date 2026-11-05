@@ -304,6 +304,18 @@ class SchemaToSMT:
                         ),
                     )
 
+        if self._schema.domain_bounds_for(column):
+            try:
+                float(proposed_fix.fix.new_value)
+            except (TypeError, ValueError):
+                return VerificationResult(
+                    verdict=VerificationVerdict.UNKNOWN,
+                    reason=(
+                        f"Could not encode value '{proposed_fix.fix.new_value}' for column "
+                        f"'{column}' as numeric for domain bound."
+                    ),
+                )
+
         # The footprint: the candidate row, plus each relevant FD's determinant group, plus any
         # row already holding the candidate value where uniqueness applies. Everything outside
         # this set is provably unable to change the verdict.
@@ -497,7 +509,11 @@ class SchemaToSMT:
         proposed_fix: ProposedFix,
         bound: DomainBound,
     ) -> None:
-        row_expr = encoding.function(IntVal(proposed_fix.fix.row))
+        row_expr = (
+            RealVal(str(float(proposed_fix.fix.new_value)))
+            if encoding.column_type in {"str", "string"}
+            else encoding.function(IntVal(proposed_fix.fix.row))
+        )
         if bound.min_value is not None:
             label = Bool(f"domain::{bound.column}::min::row::{proposed_fix.fix.row}")
             threshold = (

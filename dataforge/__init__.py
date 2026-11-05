@@ -28,7 +28,12 @@ if TYPE_CHECKING:
         run_repair_pipeline,
         verify_and_apply,
     )
-    from dataforge.integrations.dbt import schema_from_dbt_artifacts, schema_from_dbt_manifest
+    from dataforge.integrations.dbt import (
+        authoritative_schema_from_dbt_artifacts,
+        authoritative_schema_from_dbt_manifest,
+        schema_from_dbt_artifacts,
+        schema_from_dbt_manifest,
+    )
     from dataforge.repair_contract import CONTRACT_VERSION
     from dataforge.repairers import ProposedFix
     from dataforge.safety import SafetyContext, SafetyFilter, SafetyResult, SafetyVerdict
@@ -122,6 +127,8 @@ __all__ = [
     "revert_transaction",
     "run_all_detectors",
     "run_repair_pipeline",
+    "authoritative_schema_from_dbt_artifacts",
+    "authoritative_schema_from_dbt_manifest",
     "schema_from_mapping",
     "schema_from_dbt_artifacts",
     "schema_from_dbt_manifest",
@@ -199,6 +206,14 @@ _PUBLIC_EXPORTS: dict[str, tuple[str, str]] = {
     "revert_transaction": ("dataforge.transactions.revert", "revert_transaction"),
     "run_all_detectors": ("dataforge.detectors", "run_all_detectors"),
     "run_repair_pipeline": ("dataforge.engine.repair", "run_repair_pipeline"),
+    "authoritative_schema_from_dbt_artifacts": (
+        "dataforge.integrations.dbt",
+        "authoritative_schema_from_dbt_artifacts",
+    ),
+    "authoritative_schema_from_dbt_manifest": (
+        "dataforge.integrations.dbt",
+        "authoritative_schema_from_dbt_manifest",
+    ),
     "schema_from_mapping": ("dataforge.cli.common", "schema_from_mapping"),
     "schema_from_dbt_artifacts": ("dataforge.integrations.dbt", "schema_from_dbt_artifacts"),
     "schema_from_dbt_manifest": ("dataforge.integrations.dbt", "schema_from_dbt_manifest"),

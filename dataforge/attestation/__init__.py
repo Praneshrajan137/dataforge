@@ -45,6 +45,7 @@ from dataforge.domain.premise import (
     conferring_kinds,
     premise_from_canonical,
     premise_to_canonical,
+    weak_only_authority_columns,
 )
 from dataforge.domain.vocabulary import (
     PROVENANCE_ORDER as _PROVENANCE_ORDER,
@@ -1199,12 +1200,14 @@ def _check_authority(predicate: Mapping[str, object]) -> list[AttestationCheck]:
         # that; a reader handed a flat list of column names cannot. It is derived here rather than
         # embedded in the document precisely so it cannot be forged.
         by_kind = {kind: sorted(columns) for kind, columns in conferring_kinds(schema).items()}
+        weak_only = sorted(weak_only_authority_columns(schema))
+        weak_suffix = f"; weak_only_columns={weak_only}" if weak_only else ""
         return [
             AttestationCheck(
                 "authority_is_entailed",
                 True,
                 f"the published premise entails authority over exactly {sorted(claimed)}; "
-                f"conferred by {by_kind}",
+                f"conferred by {by_kind}{weak_suffix}",
             )
         ]
 

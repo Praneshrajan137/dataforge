@@ -166,3 +166,112 @@ class TestC4LeavesTheDeclaredArmAlone:
         run_repair_pipeline(RepairPipelineRequest(source_path=source, mode="apply"))
 
         assert source.read_bytes() == original
+
+
+class TestMinedAuthorityAttestation:
+    """When --trust-mined-constraints is active, the effective merged schema is attested."""
+
+    def test_mined_authority_emits_verifiable_attestation(self, source: Path) -> None:
+        from dataforge.attestation import verify_attestation
+        from dataforge.cli.emit import attest_result
+
+        result = run_repair_pipeline(
+            RepairPipelineRequest(
+                source_path=source,
+                mode="apply",
+                constraints=_accepted_fd_artifact(source),
+                mined_constraints_grant_write_authority=True,
+            )
+        )
+        assert result.receipt.applied is True
+        assert result.receipt.authoritative_columns == ["city", "zip"]
+        assert result.authority_schema is not None
+        assert "authority_schema" not in result.model_dump()
+
+        payload = attest_result(
+            result,
+            source_path=source,
+            schema_path=None,
+            mined_authority=True,
+        )
+        assert "attestation" in payload, payload.get("attestation_unavailable")
+        statement = payload["attestation"]
+        verification = verify_attestation(statement, data_bytes=source.read_bytes())
+        assert verification.ok, [c.as_dict() for c in verification.failures]
+        by_name = {c.name: c for c in verification.checks}
+        assert by_name["authority_is_entailed"].ok is True
+        assert by_name["witness_is_coherent"].ok is True
+        assert by_name["witness_is_coherent"].skipped is False
+
+    def test_mined_authority_without_effective_schema_fails_closed(self, source: Path) -> None:
+        from dataforge.cli.emit import attest_result
+        from dataforge.engine.repair import RepairPipelineResult
+
+        result = run_repair_pipeline(
+            RepairPipelineRequest(
+                source_path=source,
+                mode="apply",
+                constraints=_accepted_fd_artifact(source),
+                mined_constraints_grant_write_authority=True,
+            )
+        )
+        stripped = RepairPipelineResult(
+            receipt=result.receipt,
+            issues=result.issues,
+            fixes=result.fixes,
+            failures=result.failures,
+            transaction=result.transaction,
+            authority_schema=None,
+        )
+        payload = attest_result(
+            stripped,
+            source_path=source,
+            schema_path=None,
+            mined_authority=True,
+        )
+        assert "attestation" not in payload
+        assert "attestation_unavailable" in payload
+
+    def test_schema_to_mapping_round_trips_every_field(self) -> None:
+        from dataforge.cli.common import schema_from_mapping, schema_to_mapping
+        from dataforge.verifier.schema import (
+            AcceptedValues,
+            AggregateDependency,
+            DomainBound,
+            FunctionalDependency,
+            RegexConstraint,
+            RelationshipConstraint,
+            Schema,
+        )
+
+        schema = Schema(
+            columns={"zip": "str", "city": "str", "amount": "float"},
+            functional_dependencies=(FunctionalDependency(determinant=("zip",), dependent="city"),),
+            pii_columns=frozenset({"zip"}),
+            primary_key_columns=frozenset({"zip"}),
+            not_null_columns=frozenset({"city"}),
+            unique_columns=frozenset({"zip"}),
+            accepted_values=(AcceptedValues(column="city", values=("Springfield", "Shelbyville")),),
+            regex_constraints=(RegexConstraint(column="zip", pattern=r"^\d{5}$"),),
+            relationships=(
+                RelationshipConstraint(column="zip", reference="zips", reference_column="code"),
+            ),
+            domain_bounds=(
+                DomainBound(
+                    column="amount",
+                    min_value=0.0,
+                    max_value=100.0,
+                    inclusive_min=True,
+                    inclusive_max=False,
+                ),
+            ),
+            aggregate_dependencies=(
+                AggregateDependency(
+                    source_column="amount",
+                    aggregate="sum",
+                    target_column="amount",
+                    group_by=("zip",),
+                ),
+            ),
+        )
+        assert schema_from_mapping(schema_to_mapping(schema)) == schema

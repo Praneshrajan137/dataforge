@@ -232,23 +232,75 @@ def _pytest_node_ids() -> list[str]:
     return sorted(ids)
 
 
-def _mutant_population() -> dict[str, list[str]]:
-    """Return ``{mutant id: sorted test paths}`` by importing every harness's own table.
+def _verifier_paths_from_argv(argv: list[str], source_name: str) -> list[str]:
+    """Extract repository-relative verifier/test paths from a harness runner argv list."""
+    paths = [
+        token.replace("\\", "/")
+        for token in argv
+        if token.startswith(("tests/", "scripts/", "playground/"))
+    ]
+    if not paths:
+        raise ValueError(
+            f"{source_name}: runner argv {argv!r} contains no recognisable verifier/test path."
+        )
+    return sorted(paths)
 
-    Two harnesses, not one. Until 2026-09-16 only ``mutate_autoapply_guards`` was imported, so a
-    mutant deleted from any sibling harness was invisible to this manifest -- the same narrowing
-    this gate exists to detect, in this gate. ``mutate_domain_vocabulary`` and
-    ``mutate_adversarial_corpus`` remain outside it and are recorded as an open gap in
-    docs/trust/specification-sufficiency.md rather than fixed here, because their mutant tables
-    have a different shape and folding them in silently is how a population stops being derived.
+
+def _mutant_population() -> dict[str, list[str]]:
+    """Return ``{mutant id: sorted test/verifier paths}`` by importing every harness's table.
+
+    All four harnesses, derived and totality-checked against ``scripts/ci/mutate_*.py``.
+    Until 2026-09-16 only ``mutate_autoapply_guards`` was imported, and until 2026-10-20
+    ``mutate_domain_vocabulary`` and ``mutate_adversarial_corpus`` remained outside the
+    manifest because their ``Mutant`` dataclasses specify runners via ``RUNNERS[mutant.runner]``
+    and ``SUITE`` rather than ``mutant.tests``. Both are now derived from their own runner
+    declarations, and any ``scripts/ci/mutate_*.py`` file not accounted for here raises
+    ``ValueError`` so a fifth harness can never be added outside this manifest.
     """
     sys.path.insert(0, str(PROJECT_ROOT))
-    from scripts.ci import mutate_attestation, mutate_autoapply_guards
+    from scripts.ci import (
+        mutate_adversarial_corpus,
+        mutate_attestation,
+        mutate_autoapply_guards,
+        mutate_domain_vocabulary,
+    )
+
+    harnesses = (
+        mutate_autoapply_guards,
+        mutate_attestation,
+        mutate_domain_vocabulary,
+        mutate_adversarial_corpus,
+    )
+    known_names = {h.__name__.rsplit(".", 1)[-1] for h in harnesses}
+    discovered_names = {p.stem for p in (PROJECT_ROOT / "scripts" / "ci").glob("mutate_*.py")}
+    unaccounted = sorted(discovered_names - known_names)
+    if unaccounted:
+        raise ValueError(
+            f"Unaccounted mutation harness(es) in scripts/ci: {unaccounted}. Every "
+            "mutate_*.py harness must be imported in gate_population._mutant_population()."
+        )
 
     population: dict[str, list[str]] = {}
-    for harness in (mutate_autoapply_guards, mutate_attestation):
+    for harness in harnesses:
+        harness_name = harness.__name__.rsplit(".", 1)[-1]
         for mutant in harness.MUTANTS:
-            population[mutant.name] = sorted(path.replace("\\", "/") for path in mutant.tests)
+            if mutant.name in population:
+                raise ValueError(
+                    f"{harness_name}: duplicate mutant name {mutant.name!r} would overwrite an "
+                    "earlier harness entry in the population manifest."
+                )
+            if hasattr(mutant, "tests"):
+                paths = sorted(path.replace("\\", "/") for path in mutant.tests)
+            elif hasattr(mutant, "runner") and hasattr(harness, "RUNNERS"):
+                runner_argv = harness.RUNNERS[mutant.runner]
+                paths = _verifier_paths_from_argv(runner_argv, harness_name)
+            elif hasattr(harness, "SUITE"):
+                paths = _verifier_paths_from_argv(list(harness.SUITE), harness_name)
+            else:
+                raise ValueError(
+                    f"{harness_name}: mutant {mutant.name!r} has no derivable verifier paths."
+                )
+            population[mutant.name] = paths
     return population
 
 

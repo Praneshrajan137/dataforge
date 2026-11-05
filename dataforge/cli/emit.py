@@ -83,19 +83,21 @@ def attest_result(
     that until 2026-09-13 never called this function.
 
     ``mined_authority`` reflects ``--trust-mined-constraints``. Under that flag the engine computes
-    authority from the declared schema MERGED with human-accepted mined candidates, and those
-    candidates are not in the schema file, so the premise projected here would be a strict subset of
-    the basis the claim rests on. Publishing a premise that understates its own authority would be a
-    new instance of the defect this machinery exists to close, so the attestation is **withheld**
-    instead, with the reason named. Threading the effective schema through the receipt is the fix
-    that would restore it; that is a change to a frozen public contract and is deliberately not
-    bundled here.
+    authority from the declared schema MERGED with human-accepted mined candidates, and threads that
+    merged ``Schema`` on ``result.authority_schema`` (excluded from JSON serialisation so
+    ``RepairPipelineResult.model_dump()`` is unchanged). When ``result.authority_schema`` is
+    present, both ``premise`` and ``constraints`` are projected from the effective merged schema via
+    :func:`dataforge.domain.premise.premise_to_canonical`, so ``authority_is_entailed`` and
+    ``witness_is_coherent`` verify the exact combined premise that conferred authority. Only if a
+    caller constructs a ``RepairPipelineResult`` manually with ``mined_authority=True`` and omits
+    ``authority_schema`` is the attestation withheld.
     """
     from datetime import UTC, datetime
 
     from dataforge import __version__
     from dataforge.attestation import attest_repair
     from dataforge.cli.common import load_schema, load_schema_mapping
+    from dataforge.domain.premise import premise_to_canonical
     from dataforge.witness import witnesses_for_applied_fixes
 
     if not result.receipt.applied:
@@ -106,19 +108,31 @@ def attest_result(
             )
         }
 
-    if mined_authority and result.receipt.authoritative_columns:
+    if mined_authority and result.receipt.authoritative_columns and result.authority_schema is None:
         return {
             "attestation_unavailable": (
                 "write authority came from the declared schema merged with accepted mined "
-                "constraints (--trust-mined-constraints), and the mined half is not in the schema "
-                "file. The published premise would therefore understate the authority basis, and "
-                "an attestation whose premise does not entail its own authority claim is worse "
-                "than none. Re-run without --trust-mined-constraints to obtain a portable "
-                "attestation."
+                "constraints (--trust-mined-constraints), and the effective merged schema was "
+                "not attached to the result. The published premise would therefore understate "
+                "the authority basis, and an attestation whose premise does not entail its own "
+                "authority claim is worse than none."
             )
         }
 
-    declared_schema = load_schema(schema_path) if schema_path is not None else None
+    effective_schema = (
+        result.authority_schema
+        if (mined_authority and result.authority_schema is not None)
+        else (load_schema(schema_path) if schema_path is not None else result.authority_schema)
+    )
+    constraints_mapping: dict[str, Any] | None = (
+        premise_to_canonical(effective_schema)
+        if (mined_authority and effective_schema is not None)
+        else (
+            load_schema_mapping(schema_path)
+            if schema_path is not None
+            else (premise_to_canonical(effective_schema) if effective_schema is not None else None)
+        )
+    )
 
     applied = [fix.model_dump(mode="json") for fix in result.receipt.applied_fixes]
     emission = attest_repair(
@@ -126,14 +140,14 @@ def attest_result(
         subject_name=source_path.name,
         tool_version=__version__,
         produced_at=datetime.now(UTC).isoformat(),
-        constraints=load_schema_mapping(schema_path) if schema_path is not None else None,
-        authority_schema=declared_schema,
+        constraints=constraints_mapping,
+        authority_schema=effective_schema,
         journal_head_sha256=None,
         data_bytes=source_path.read_bytes() if source_path.is_file() else None,
         witnesses=witnesses_for_applied_fixes(
             source_path,
             applied,
-            declared_schema,
+            effective_schema,
         ),
     )
     return emission.as_dict()

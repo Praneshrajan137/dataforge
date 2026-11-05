@@ -27,7 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WEB = PROJECT_ROOT / "playground" / "web"
 VECTORS = PROJECT_ROOT / "tests" / "fixtures" / "attestation" / "vectors.json"
 
-MINIMUM_VECTORS = 15
+MINIMUM_VECTORS = 35
 
 
 def _run(command: list[str], cwd: Path) -> tuple[int, str]:
@@ -92,11 +92,38 @@ def main() -> int:
         if code != 0:
             failures.append("typescript")
 
+    print("\n==> Clean-room Java 17 implementation (armD)")
+    javac = shutil.which("javac")
+    java = shutil.which("java")
+    if javac is None or java is None:
+        print(
+            "FAIL: javac/java not found, so the clean-room Java 17 implementation could not "
+            "be verified."
+        )
+        failures.append("java-cleanroom-unavailable")
+    else:
+        code, output = _run(
+            [
+                sys.executable,
+                "scripts/bench/measure_specification_sufficiency.py",
+                "--check",
+                "--arm",
+                "armD",
+            ],
+            PROJECT_ROOT,
+        )
+        print(output.strip()[-600:] if code else "PASS")
+        if code != 0:
+            failures.append("java-cleanroom-armD")
+
     if failures:
         print(f"\nCONFORMANCE FAILED: {failures}")
         return 1
 
-    print("\nConformance verified: both implementations agree on every vector.")
+    print(
+        "\nConformance verified: all three implementations "
+        "(Python, TypeScript, Clean-room Java 17) agree on every vector."
+    )
     return 0
 
 

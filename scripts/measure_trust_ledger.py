@@ -33,10 +33,14 @@ from dataforge.metrics import TrustLedger  # noqa: E402
 from tests.adversarial.corpus import (  # noqa: E402
     ACCEPTED_VALUES_ONLY_SCHEMA,
     DDL_TYPICAL_SCHEMA,
+    DISCRIMINATING_TYPE_ONLY_SCHEMA,
+    DOMAIN_BOUNDS_ONLY_SCHEMA,
+    FD_ONLY_SCHEMA,
     NON_ENCODABLE_TYPE_SCHEMA,
     NOT_NULL_ONLY_SCHEMA,
     PERMISSIVE_SCHEMA,
     PRIMARY_KEY_ONLY_SCHEMA,
+    REGEX_ONLY_SCHEMA,
     TIGHT_SCHEMA,
     UNENFORCEABLE_AGGREGATE_SCHEMA,
     UNENFORCEABLE_RELATIONSHIP_SCHEMA,
@@ -249,6 +253,24 @@ def main() -> int:
             NON_ENCODABLE_TYPE_SCHEMA,
             "one uncheckable type (permissive + every column declared `date`)",
         ),
+        # Amendment 4, added 2026-10-20: the remaining four enforceable kinds in isolation,
+        # completing the 8-of-8 per-kind authority matrix.
+        "discriminating_type_only": (
+            DISCRIMINATING_TYPE_ONLY_SCHEMA,
+            "one kind (permissive + discriminating int/float types on numeric columns)",
+        ),
+        "regex_only": (
+            REGEX_ONLY_SCHEMA,
+            "one kind (permissive + format regex_constraints on every column)",
+        ),
+        "domain_bounds_only": (
+            DOMAIN_BOUNDS_ONLY_SCHEMA,
+            "one kind (permissive + domain_bounds on numeric columns)",
+        ),
+        "fd_only": (
+            FD_ONLY_SCHEMA,
+            "one kind (permissive + functional_dependencies across columns)",
+        ),
     }
     subsets = ("discriminable", "undecidable", "all")
 
@@ -331,6 +353,10 @@ def main() -> int:
     _accepted = results["accepted_values_only"]["discriminable"]
     _primary_key = results["primary_key_only"]["discriminable"]
     _ddl = results["ddl_typical"]["discriminable"]
+    _dtype = results["discriminating_type_only"]["discriminable"]
+    _regex = results["regex_only"]["discriminable"]
+    _bounds = results["domain_bounds_only"]["discriminable"]
+    _fd = results["fd_only"]["discriminable"]
     per_kind = (
         "The tight premise's zero is a BUNDLE result -- discriminating types, accepted_values, "
         "regex_constraints and domain_bounds together -- so it attributes strength to none of "
@@ -349,7 +375,13 @@ def main() -> int:
         f"emits for a typical production table: it corrupts {_ddl['corruptions']} of "
         f"{_ddl['attacks']}. not_null is on roughly 56% of real columns and unique is one of "
         "dbt's four generic tests, so an importer treating either as an authority source would "
-        "mass-produce the defect removed on 2026-08-25."
+        "mass-produce the defect removed on 2026-08-25. Completing the 8-of-8 matrix "
+        f"(Amendment 4): domain_bounds alone corrupts {_bounds['corruptions']} and keeps its "
+        f"{_bounds['corrections']} repair; regex_constraints alone corrupts {_regex['corruptions']} "
+        f"and keeps its {_regex['corrections']} repair; discriminating types alone corrupts "
+        f"{_dtype['corruptions']} and keeps its {_dtype['corrections']} repair; "
+        f"functional_dependencies alone corrupts {_fd['corruptions']} and keeps its "
+        f"{_fd['corrections']} repair (admitting attacks on singleton determinant groups)."
     )
 
     payload = {

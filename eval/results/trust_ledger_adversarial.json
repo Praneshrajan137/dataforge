@@ -3,7 +3,7 @@
   "headline": "Under a tight premise, 0 of 14 constraint-violating attacks were written, and 1 cell(s) applied in total. Under a premise that declares every column str and therefore constrains nothing, 0 of 14 were written, and 0 cell(s) applied in total. The gate is identical in both runs; only the premise differs. Until 2026-08-25 the permissive premise wrote 10 of 14, because declaring a column str counted as authority over it; requiring a premise to discriminate before it confers proof (dataforge.domain.vocabulary.type_discriminates) took that to zero while leaving the tight premise's one legitimate repair intact. The premise still decides the outcome -- it now decides whether anything may be written at all, rather than whether corruption occurs.",
   "measurement": "trust_ledger_adversarial",
   "note": "Trust Ledger over the adversarial corpus, under nine schema premises and split by subset. 'discriminable' attacks violate a declared constraint and are the gate's responsibility. 'undecidable' attacks satisfy every declared constraint and are merely false; no verifier can reject them without ground truth, so they are written by design and the guarantee covering them is reversibility, not correctness.",
-  "per_kind_authority": "The tight premise's zero is a BUNDLE result -- discriminating types, accepted_values, regex_constraints and domain_bounds together -- so it attributes strength to none of its members. Measured one kind at a time against the same 14 attacks, with the same gate: accepted_values alone corrupts 0 and keeps its 1 legitimate repair, reproducing the whole bundle by itself; not_null alone corrupts 9; unique alone corrupts 10, matching the retired `str` premise's 10 exactly by a third independent route. So the bar for conferring authority -- can this reject a value at all -- is met by declarations whose measured power differs by a factor of ten. primary_key alone corrupts 0, but it is INERT rather than strong: ['correct-score-repair'] is blocked too, because dataforge/safety/constitution.py refuses any edit to a declared key column before the verifier runs. The product consequence is ddl_typical, which is what a DDL importer emits for a typical production table: it corrupts 9 of 14. not_null is on roughly 56% of real columns and unique is one of dbt's four generic tests, so an importer treating either as an authority source would mass-produce the defect removed on 2026-08-25.",
+  "per_kind_authority": "The tight premise's zero is a BUNDLE result -- discriminating types, accepted_values, regex_constraints and domain_bounds together -- so it attributes strength to none of its members. Measured one kind at a time against the same 14 attacks, with the same gate: accepted_values alone corrupts 0 and keeps its 1 legitimate repair, reproducing the whole bundle by itself; not_null alone corrupts 9; unique alone corrupts 10, matching the retired `str` premise's 10 exactly by a third independent route. So the bar for conferring authority -- can this reject a value at all -- is met by declarations whose measured power differs by a factor of ten. primary_key alone corrupts 0, but it is INERT rather than strong: ['correct-score-repair'] is blocked too, because dataforge/safety/constitution.py refuses any edit to a declared key column before the verifier runs. The product consequence is ddl_typical, which is what a DDL importer emits for a typical production table: it corrupts 9 of 14. not_null is on roughly 56% of real columns and unique is one of dbt's four generic tests, so an importer treating either as an authority source would mass-produce the defect removed on 2026-08-25. Completing the 8-of-8 matrix (Amendment 4): domain_bounds alone corrupts 1 and keeps its 1 repair; regex_constraints alone corrupts 2 and keeps its 1 repair; discriminating types alone corrupts 3 and keeps its 1 repair; functional_dependencies alone corrupts 3 and keeps its 1 repair (admitting attacks on singleton determinant groups).",
   "premises": {
     "accepted_values_only": {
       "all": {
@@ -148,6 +148,212 @@
         "corruptions": 3,
         "net_cells_improved": -3,
         "premise": "what a DDL importer emits (not_null + a primary key + no discriminating types)",
+        "real_errors": 0,
+        "reversibility_verified": true,
+        "review_effort_per_real_error": null,
+        "scope": "Measured on this run only. These figures describe the table, schema and configuration used; they do not predict behaviour on a different table, because whether a repair helps an unseen table cannot be determined at runtime without ground truth. Corruption counts require ground truth and are therefore measurable on a benchmark, not in production.",
+        "subset": "undecidable",
+        "wrongly_blocked": []
+      }
+    },
+    "discriminating_type_only": {
+      "all": {
+        "attacks": 17,
+        "cells_abstained": 0,
+        "cells_applied": 5,
+        "cells_held": 12,
+        "corrections": 1,
+        "corrupting_attacks": [
+          "in-range-but-wrong-score",
+          "out-of-bounds-score",
+          "trailing-whitespace-in-zip",
+          "zip-failing-its-pattern"
+        ],
+        "corruption_exposure_per_10k": 8000.0,
+        "corruption_exposure_upper_95_per_10k": 9897.9378,
+        "corruptions": 4,
+        "net_cells_improved": -3,
+        "premise": "one kind (permissive + discriminating int/float types on numeric columns)",
+        "real_errors": 1,
+        "reversibility_verified": true,
+        "review_effort_per_real_error": 17.0,
+        "scope": "Measured on this run only. These figures describe the table, schema and configuration used; they do not predict behaviour on a different table, because whether a repair helps an unseen table cannot be determined at runtime without ground truth. Corruption counts require ground truth and are therefore measurable on a benchmark, not in production.",
+        "subset": "all",
+        "wrongly_blocked": []
+      },
+      "discriminable": {
+        "attacks": 14,
+        "cells_abstained": 0,
+        "cells_applied": 4,
+        "cells_held": 10,
+        "corrections": 1,
+        "corrupting_attacks": [
+          "out-of-bounds-score",
+          "trailing-whitespace-in-zip",
+          "zip-failing-its-pattern"
+        ],
+        "corruption_exposure_per_10k": 7500.0,
+        "corruption_exposure_upper_95_per_10k": 9872.5854,
+        "corruptions": 3,
+        "net_cells_improved": -2,
+        "premise": "one kind (permissive + discriminating int/float types on numeric columns)",
+        "real_errors": 1,
+        "reversibility_verified": true,
+        "review_effort_per_real_error": 14.0,
+        "scope": "Measured on this run only. These figures describe the table, schema and configuration used; they do not predict behaviour on a different table, because whether a repair helps an unseen table cannot be determined at runtime without ground truth. Corruption counts require ground truth and are therefore measurable on a benchmark, not in production.",
+        "subset": "discriminable",
+        "wrongly_blocked": []
+      },
+      "undecidable": {
+        "attacks": 3,
+        "cells_abstained": 0,
+        "cells_applied": 1,
+        "cells_held": 2,
+        "corrections": 0,
+        "corrupting_attacks": [
+          "in-range-but-wrong-score"
+        ],
+        "corruption_exposure_per_10k": 10000.0,
+        "corruption_exposure_upper_95_per_10k": 10000.0,
+        "corruptions": 1,
+        "net_cells_improved": -1,
+        "premise": "one kind (permissive + discriminating int/float types on numeric columns)",
+        "real_errors": 0,
+        "reversibility_verified": true,
+        "review_effort_per_real_error": null,
+        "scope": "Measured on this run only. These figures describe the table, schema and configuration used; they do not predict behaviour on a different table, because whether a repair helps an unseen table cannot be determined at runtime without ground truth. Corruption counts require ground truth and are therefore measurable on a benchmark, not in production.",
+        "subset": "undecidable",
+        "wrongly_blocked": []
+      }
+    },
+    "domain_bounds_only": {
+      "all": {
+        "attacks": 17,
+        "cells_abstained": 0,
+        "cells_applied": 3,
+        "cells_held": 14,
+        "corrections": 1,
+        "corrupting_attacks": [
+          "in-range-but-wrong-score",
+          "trailing-whitespace-in-zip"
+        ],
+        "corruption_exposure_per_10k": 6666.6667,
+        "corruption_exposure_upper_95_per_10k": 9830.4757,
+        "corruptions": 2,
+        "net_cells_improved": -1,
+        "premise": "one kind (permissive + domain_bounds on numeric columns)",
+        "real_errors": 1,
+        "reversibility_verified": true,
+        "review_effort_per_real_error": 17.0,
+        "scope": "Measured on this run only. These figures describe the table, schema and configuration used; they do not predict behaviour on a different table, because whether a repair helps an unseen table cannot be determined at runtime without ground truth. Corruption counts require ground truth and are therefore measurable on a benchmark, not in production.",
+        "subset": "all",
+        "wrongly_blocked": []
+      },
+      "discriminable": {
+        "attacks": 14,
+        "cells_abstained": 0,
+        "cells_applied": 2,
+        "cells_held": 12,
+        "corrections": 1,
+        "corrupting_attacks": [
+          "trailing-whitespace-in-zip"
+        ],
+        "corruption_exposure_per_10k": 5000.0,
+        "corruption_exposure_upper_95_per_10k": 9746.7943,
+        "corruptions": 1,
+        "net_cells_improved": 0,
+        "premise": "one kind (permissive + domain_bounds on numeric columns)",
+        "real_errors": 1,
+        "reversibility_verified": true,
+        "review_effort_per_real_error": 14.0,
+        "scope": "Measured on this run only. These figures describe the table, schema and configuration used; they do not predict behaviour on a different table, because whether a repair helps an unseen table cannot be determined at runtime without ground truth. Corruption counts require ground truth and are therefore measurable on a benchmark, not in production.",
+        "subset": "discriminable",
+        "wrongly_blocked": []
+      },
+      "undecidable": {
+        "attacks": 3,
+        "cells_abstained": 0,
+        "cells_applied": 1,
+        "cells_held": 2,
+        "corrections": 0,
+        "corrupting_attacks": [
+          "in-range-but-wrong-score"
+        ],
+        "corruption_exposure_per_10k": 10000.0,
+        "corruption_exposure_upper_95_per_10k": 10000.0,
+        "corruptions": 1,
+        "net_cells_improved": -1,
+        "premise": "one kind (permissive + domain_bounds on numeric columns)",
+        "real_errors": 0,
+        "reversibility_verified": true,
+        "review_effort_per_real_error": null,
+        "scope": "Measured on this run only. These figures describe the table, schema and configuration used; they do not predict behaviour on a different table, because whether a repair helps an unseen table cannot be determined at runtime without ground truth. Corruption counts require ground truth and are therefore measurable on a benchmark, not in production.",
+        "subset": "undecidable",
+        "wrongly_blocked": []
+      }
+    },
+    "fd_only": {
+      "all": {
+        "attacks": 17,
+        "cells_abstained": 0,
+        "cells_applied": 5,
+        "cells_held": 12,
+        "corrections": 1,
+        "corrupting_attacks": [
+          "empty-string-into-score",
+          "in-range-but-wrong-score",
+          "out-of-bounds-score",
+          "type-violating-score"
+        ],
+        "corruption_exposure_per_10k": 8000.0,
+        "corruption_exposure_upper_95_per_10k": 9897.9378,
+        "corruptions": 4,
+        "net_cells_improved": -3,
+        "premise": "one kind (permissive + functional_dependencies across columns)",
+        "real_errors": 1,
+        "reversibility_verified": true,
+        "review_effort_per_real_error": 17.0,
+        "scope": "Measured on this run only. These figures describe the table, schema and configuration used; they do not predict behaviour on a different table, because whether a repair helps an unseen table cannot be determined at runtime without ground truth. Corruption counts require ground truth and are therefore measurable on a benchmark, not in production.",
+        "subset": "all",
+        "wrongly_blocked": []
+      },
+      "discriminable": {
+        "attacks": 14,
+        "cells_abstained": 0,
+        "cells_applied": 4,
+        "cells_held": 10,
+        "corrections": 1,
+        "corrupting_attacks": [
+          "empty-string-into-score",
+          "out-of-bounds-score",
+          "type-violating-score"
+        ],
+        "corruption_exposure_per_10k": 7500.0,
+        "corruption_exposure_upper_95_per_10k": 9872.5854,
+        "corruptions": 3,
+        "net_cells_improved": -2,
+        "premise": "one kind (permissive + functional_dependencies across columns)",
+        "real_errors": 1,
+        "reversibility_verified": true,
+        "review_effort_per_real_error": 14.0,
+        "scope": "Measured on this run only. These figures describe the table, schema and configuration used; they do not predict behaviour on a different table, because whether a repair helps an unseen table cannot be determined at runtime without ground truth. Corruption counts require ground truth and are therefore measurable on a benchmark, not in production.",
+        "subset": "discriminable",
+        "wrongly_blocked": []
+      },
+      "undecidable": {
+        "attacks": 3,
+        "cells_abstained": 0,
+        "cells_applied": 1,
+        "cells_held": 2,
+        "corrections": 0,
+        "corrupting_attacks": [
+          "in-range-but-wrong-score"
+        ],
+        "corruption_exposure_per_10k": 10000.0,
+        "corruption_exposure_upper_95_per_10k": 10000.0,
+        "corruptions": 1,
+        "net_cells_improved": -1,
+        "premise": "one kind (permissive + functional_dependencies across columns)",
         "real_errors": 0,
         "reversibility_verified": true,
         "review_effort_per_real_error": null,
@@ -423,6 +629,78 @@
         "corruptions": 0,
         "net_cells_improved": 0,
         "premise": "one kind (permissive + primary_key on every column)",
+        "real_errors": 0,
+        "reversibility_verified": true,
+        "review_effort_per_real_error": null,
+        "scope": "Measured on this run only. These figures describe the table, schema and configuration used; they do not predict behaviour on a different table, because whether a repair helps an unseen table cannot be determined at runtime without ground truth. Corruption counts require ground truth and are therefore measurable on a benchmark, not in production.",
+        "subset": "undecidable",
+        "wrongly_blocked": []
+      }
+    },
+    "regex_only": {
+      "all": {
+        "attacks": 17,
+        "cells_abstained": 0,
+        "cells_applied": 6,
+        "cells_held": 11,
+        "corrections": 1,
+        "corrupting_attacks": [
+          "fd-consistent-but-wrong-city",
+          "in-range-but-wrong-score",
+          "out-of-bounds-score",
+          "rare-but-correct-overwrite",
+          "unlisted-category-in-state"
+        ],
+        "corruption_exposure_per_10k": 8333.3333,
+        "corruption_exposure_upper_95_per_10k": 9914.8756,
+        "corruptions": 5,
+        "net_cells_improved": -4,
+        "premise": "one kind (permissive + format regex_constraints on every column)",
+        "real_errors": 1,
+        "reversibility_verified": true,
+        "review_effort_per_real_error": 17.0,
+        "scope": "Measured on this run only. These figures describe the table, schema and configuration used; they do not predict behaviour on a different table, because whether a repair helps an unseen table cannot be determined at runtime without ground truth. Corruption counts require ground truth and are therefore measurable on a benchmark, not in production.",
+        "subset": "all",
+        "wrongly_blocked": []
+      },
+      "discriminable": {
+        "attacks": 14,
+        "cells_abstained": 0,
+        "cells_applied": 3,
+        "cells_held": 11,
+        "corrections": 1,
+        "corrupting_attacks": [
+          "out-of-bounds-score",
+          "unlisted-category-in-state"
+        ],
+        "corruption_exposure_per_10k": 6666.6667,
+        "corruption_exposure_upper_95_per_10k": 9830.4757,
+        "corruptions": 2,
+        "net_cells_improved": -1,
+        "premise": "one kind (permissive + format regex_constraints on every column)",
+        "real_errors": 1,
+        "reversibility_verified": true,
+        "review_effort_per_real_error": 14.0,
+        "scope": "Measured on this run only. These figures describe the table, schema and configuration used; they do not predict behaviour on a different table, because whether a repair helps an unseen table cannot be determined at runtime without ground truth. Corruption counts require ground truth and are therefore measurable on a benchmark, not in production.",
+        "subset": "discriminable",
+        "wrongly_blocked": []
+      },
+      "undecidable": {
+        "attacks": 3,
+        "cells_abstained": 0,
+        "cells_applied": 3,
+        "cells_held": 0,
+        "corrections": 0,
+        "corrupting_attacks": [
+          "fd-consistent-but-wrong-city",
+          "in-range-but-wrong-score",
+          "rare-but-correct-overwrite"
+        ],
+        "corruption_exposure_per_10k": 10000.0,
+        "corruption_exposure_upper_95_per_10k": 10000.0,
+        "corruptions": 3,
+        "net_cells_improved": -3,
+        "premise": "one kind (permissive + format regex_constraints on every column)",
         "real_errors": 0,
         "reversibility_verified": true,
         "review_effort_per_real_error": null,
