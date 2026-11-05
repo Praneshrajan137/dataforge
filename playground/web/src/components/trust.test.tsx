@@ -16,8 +16,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { TrustVerdict } from "../observatory";
-import type { Certificate } from "../types";
-import { CertificatePanel, HeldForReviewList, ProofAttribution, TrustVerdictPanel } from "./trust";
+import type { AttestationVerificationView, Certificate } from "../types";
+import {
+  AttestationPanel,
+  CertificatePanel,
+  HeldForReviewList,
+  ProofAttribution,
+  TrustVerdictPanel,
+} from "./trust";
 
 const verdict = (overrides: Partial<TrustVerdict> = {}): TrustVerdict =>
   ({
@@ -185,6 +191,141 @@ describe("CertificatePanel", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /Download portable certificate/ }));
     expect(onDownload).toHaveBeenCalledOnce();
+  });
+});
+
+function validDryRunStatement(
+  sourceDigest = "a".repeat(64),
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const basePredicate: Record<string, unknown> = {
+    attestation_version: "1",
+    tool: { name: "dataforge", version: "0.1.0" },
+    produced_at: "2026-10-21T00:00:00Z",
+    mode: "dry_run",
+    applied: false,
+    reversible: true,
+    source: { name: "hospital_10rows.csv", digest: { sha256: sourceDigest } },
+    post: null,
+    authority: {
+      authoritative_columns: [],
+      accepted_constraint_ids: [],
+      constraints_sha256: null,
+      constraints: null,
+      premise: null,
+    },
+    fixes: [],
+    held: [],
+    verdicts: {
+      safety: "allow",
+      verifier: "accept",
+      independent_verification: "not_run",
+    },
+    journal: { txn_id: "txn-demo", patch_plan_sha256: "c".repeat(64) },
+    revert_command: "dataforge revert txn-demo",
+    limitations: ["Dry run only."],
+    ...overrides,
+  };
+  return {
+    _type: "https://in-toto.io/Statement/v1",
+    subject: [{ name: "hospital_10rows.csv", digest: { sha256: sourceDigest } }],
+    predicateType: "https://dataforge.dev/RepairAttestation/v1",
+    predicate: basePredicate,
+  };
+}
+
+describe("AttestationPanel", () => {
+  it("re-verifies the in-toto v1 Statement in the browser and marks skipped checks neutrally", () => {
+    const sha = "a".repeat(64);
+    const attestation: AttestationVerificationView = {
+      ok: true,
+      checks: [],
+      statement: validDryRunStatement(sha),
+    };
+    render(
+      <AttestationPanel
+        attestation={attestation}
+        sourceSha256={sha}
+        sourceName="hospital_10rows.csv"
+        onDownloadAttestation={() => {}}
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Browser verified 11/11 normative checks" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("client-verified ? 1 skipped")).toBeInTheDocument();
+    const skippedLabel = screen.getByText("witness is coherent (skipped)");
+    expect(skippedLabel.closest("li")?.className).toContain("certificate-check--skipped");
+    expect(skippedLabel.closest("li")?.className).not.toContain("certificate-check--ok");
+  });
+
+  it("refuses a forged authority claim in the browser EVEN WHEN the server claims ok=true", () => {
+    const sha = "a".repeat(64);
+    const forged = validDryRunStatement(sha, {
+      authority: {
+        authoritative_columns: ["rating"],
+        accepted_constraint_ids: [],
+        constraints_sha256: null,
+        constraints: null,
+        premise: null,
+      },
+    });
+    render(
+      <AttestationPanel
+        attestation={{ ok: true, checks: [], statement: forged }}
+        sourceSha256={sha}
+        sourceName="hospital_10rows.csv"
+        onDownloadAttestation={() => {}}
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Browser verifier refused 1 normative check(s)" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("review")).toBeInTheDocument();
+    expect(screen.getByText(/no premise is published/i)).toBeInTheDocument();
+  });
+
+  it("discloses weak_only_columns when authority is entailed solely by not_null or unique", () => {
+    const sha = "a".repeat(64);
+    const weakPremise = validDryRunStatement(sha, {
+      authority: {
+        authoritative_columns: ["provider_number"],
+        accepted_constraint_ids: [],
+        constraints_sha256: null,
+        constraints: null,
+        premise: {
+          premise_format: "dataforge.premise/v1",
+          not_null_columns: ["provider_number"],
+        },
+      },
+    });
+    render(
+      <AttestationPanel
+        attestation={{ ok: true, checks: [], statement: weakPremise }}
+        sourceSha256={sha}
+        sourceName="hospital_10rows.csv"
+        onDownloadAttestation={() => {}}
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Browser verified 11/11 normative checks" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/weak_only_columns=\[provider_number\]/)).toBeInTheDocument();
+  });
+
+  it("downloads the raw in-toto Statement on request", async () => {
+    const sha = "a".repeat(64);
+    const onDownloadAttestation = vi.fn();
+    render(
+      <AttestationPanel
+        attestation={{ ok: true, checks: [], statement: validDryRunStatement(sha) }}
+        sourceSha256={sha}
+        sourceName="hospital_10rows.csv"
+        onDownloadAttestation={onDownloadAttestation}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Download in-toto Statement/ }));
+    expect(onDownloadAttestation).toHaveBeenCalledOnce();
   });
 });
 

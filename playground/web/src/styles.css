@@ -2832,6 +2832,10 @@ textarea {
   color: var(--df-status-danger-text);
 }
 
+.certificate-check--skipped svg {
+  color: var(--df-text-2);
+}
+
 .certificate-check strong {
   display: block;
   font-size: 0.82rem;

@@ -18,6 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiProblemError } from "../api";
 import type { IssueGroup, ProblemDetail, Severity } from "../types";
 import {
+  downloadAttestation,
   failureKey,
   filterAndSortIssues,
   formatConstraintColumns,
@@ -219,6 +220,32 @@ describe("sleep", () => {
       expect(done).toBe(true);
     } finally {
       vi.useRealTimers();
+    }
+  });
+});
+
+describe("downloadAttestation", () => {
+  it("downloads a .intoto.json Statement keyed by the short source hash", () => {
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:statement");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    let capturedDownload = "";
+    const appendSpy = vi.spyOn(document.body, "appendChild").mockImplementation((node) => {
+      if (node instanceof HTMLAnchorElement) {
+        capturedDownload = node.download;
+      }
+      return Node.prototype.appendChild.call(document.body, node) as typeof node;
+    });
+    try {
+      downloadAttestation({ _type: "https://in-toto.io/Statement/v1" }, "abcd1234" + "0".repeat(56));
+      expect(capturedDownload).toBe("dataforge-attestation-abcd12340000.intoto.json");
+      expect(click).toHaveBeenCalledOnce();
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:statement");
+    } finally {
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+      click.mockRestore();
+      appendSpy.mockRestore();
     }
   });
 });

@@ -148,7 +148,13 @@ describe("the shipped budget table", () => {
   });
 
   it("budgets a role for every chunk the build actually emits", () => {
-    for (const name of ["index-CDpSX4T6.js", "vendor-DlkJlkDf.js", "rolldown-runtime-Cyuzqnbw.js"]) {
+    for (const name of [
+      "index-CDpSX4T6.js",
+      "vendor-DlkJlkDf.js",
+      "motion-CZENdFZw.js",
+      "attestation-CTRNH6rs.js",
+      "rolldown-runtime-Cyuzqnbw.js",
+    ]) {
       expect(chunkRole(name, BUDGETS.perChunkBytes)).not.toBeNull();
     }
   });

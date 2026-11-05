@@ -286,6 +286,26 @@ function mutate(mutant, original) {
   return mutant.apply(original);
 }
 
+function writeFileRetry(path, content) {
+  // On Windows, a child Node process or Windows Defender can hold a brief sharing lock
+  // on a mutated file for a few milliseconds after execFileSync returns. Throwing inside
+  // `finally` leaves the source file mutated on disk, so retry transient lock errors.
+  const sleepBuf = new Int32Array(new SharedArrayBuffer(4));
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      writeFileSync(path, content, { encoding: "utf8" });
+      return;
+    } catch (error) {
+      const code = error && typeof error === "object" ? error.code : "";
+      if ((code === "EBUSY" || code === "EPERM" || code === "UNKNOWN") && attempt < 8) {
+        Atomics.wait(sleepBuf, 0, 0, 25 * (attempt + 1));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 function main() {
   if (!baselineGreen()) {
     return 1;
@@ -301,7 +321,7 @@ function main() {
       survivors.push(mutant.name);
       continue;
     }
-    writeFileSync(mutant.path, mutated, { encoding: "utf8" });
+    writeFileRetry(mutant.path, mutated);
     try {
       const status = runGate(mutant.runner);
       if (status === 0) {
@@ -311,7 +331,7 @@ function main() {
         console.log(`killed    ${mutant.name} [law ${mutant.law}]`);
       }
     } finally {
-      writeFileSync(mutant.path, original, { encoding: "utf8" });
+      writeFileRetry(mutant.path, original);
     }
   }
 

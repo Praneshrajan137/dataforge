@@ -1,12 +1,14 @@
 /** The trust surface: verdict, portable certificate, held-for-review, and proof asymmetry. */
+import { verifyStatement } from "../attestation/verify";
 import { EvidenceNote, VerificationStrengthBadge } from "../components/primitives";
 import { motionSprings, panelVariants } from "../motion";
-import { PROOF_ATTRIBUTION_ASYMMETRY, formatLabel, humanizeReviewReason, parseUnsatCore, strengthOf } from "../observatory";
+import { PROOF_ATTRIBUTION_ASYMMETRY, formatLabel, humanizeReviewReason, parseUnsatCore, shortHash, strengthOf } from "../observatory";
 import type { SelectedEvidence, TrustVerdict } from "../observatory";
-import type { CandidateRepair, Certificate, RepairFailure } from "../types";
+import type { AttestationVerificationView, CandidateRepair, Certificate, RepairFailure } from "../types";
 import { failureKey } from "../ui/helpers";
-import { AlertTriangle, BadgeCheck, CheckCircle2, Download, ShieldCheck } from "lucide-react";
+import { AlertTriangle, BadgeCheck, CheckCircle2, Download, MinusCircle, ShieldCheck } from "lucide-react";
 import { motion } from "motion/react";
+import { useMemo } from "react";
 
 export function TrustVerdictPanel({ verdict, stale = false }: { verdict: TrustVerdict; stale?: boolean }) {
   if (verdict.level === "pending") {
@@ -142,6 +144,111 @@ export function CertificatePanel({
             <span className="single-verifier-note">Single verifier</span>
           )}{" "}
           Re-verify off this machine with <code>{auditCommand}</code>.
+        </p>
+      </div>
+    </motion.section>
+  );
+}
+
+export function AttestationPanel({
+  attestation,
+  sourceSha256,
+  sourceName,
+  onDownloadAttestation,
+}: {
+  attestation: AttestationVerificationView;
+  sourceSha256: string;
+  sourceName: string;
+  onDownloadAttestation: () => void;
+}) {
+  // Run the independent TypeScript implementation of SPEC_repair_attestation.md right in
+  // the browser against the in-toto v1 Statement and the local source digest, rather than
+  // trusting the server's `attestation.ok` boolean.
+  const browserResult = useMemo(
+    () => verifyStatement(attestation.statement, { dataSha256: sourceSha256 }),
+    [attestation.statement, sourceSha256],
+  );
+  const serverAgreed = browserResult.ok === attestation.ok;
+  const overallOk = browserResult.ok && serverAgreed;
+  const executed = browserResult.checks.filter((entry) => !entry.skipped);
+  const executedPassed = executed.filter((entry) => entry.ok).length;
+  const skippedCount = browserResult.skipped.length;
+  const failedCount = browserResult.failures.length;
+
+  const heading = !browserResult.ok
+    ? `Browser verifier refused ${failedCount} normative check(s)`
+    : !serverAgreed
+      ? "Server and browser attestation verifiers disagreed"
+      : `Browser verified ${executedPassed}/${executed.length} normative checks`;
+
+  const chipLabel = !overallOk
+    ? "review"
+    : skippedCount > 0
+      ? `client-verified ? ${skippedCount} skipped`
+      : "client-verified";
+
+  const filename = `dataforge-attestation-${shortHash(sourceSha256)}.intoto.json`;
+
+  return (
+    <motion.section
+      className={`certificate-panel certificate-panel--${overallOk ? "ok" : "attention"}`}
+      aria-labelledby="attestation-title"
+      variants={panelVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+    >
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Normative in-toto attestation</p>
+          <h2 id="attestation-title">{heading}</h2>
+        </div>
+        <span className={`quiet-chip quiet-chip--${overallOk ? "ok" : "attention"}`}>
+          {chipLabel}
+        </span>
+      </div>
+      <p className="certificate-panel__lede">
+        Your browser independently ran the zero-dependency TypeScript implementation of{" "}
+        <code>dataforge.repair.attestation/v1</code> against the emitted{" "}
+        <code>in-toto</code> v1 Statement and source SHA-256 ? sharing no runtime code with the
+        Python engine.
+      </p>
+      <ul className="certificate-checks" aria-label="Normative attestation checks">
+        {browserResult.checks.map((check) => {
+          const stateClass = check.skipped ? "skipped" : check.ok ? "ok" : "fail";
+          return (
+            <li
+              className={`certificate-check certificate-check--${stateClass}`}
+              key={check.name}
+            >
+              {check.skipped ? (
+                <MinusCircle aria-hidden="true" />
+              ) : check.ok ? (
+                <CheckCircle2 aria-hidden="true" />
+              ) : (
+                <AlertTriangle aria-hidden="true" />
+              )}
+              <div>
+                <strong>
+                  {formatLabel(check.name)}
+                  {check.skipped ? " (skipped)" : ""}
+                </strong>
+                <p>{check.detail}</p>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="certificate-panel__actions">
+        <button type="button" className="ghost-button" onClick={onDownloadAttestation}>
+          <Download aria-hidden="true" /> Download in-toto Statement
+        </button>
+        <p className="certificate-panel__reverify">
+          <span className="corroborated-chip">
+            <BadgeCheck aria-hidden="true" /> Three-language spec
+          </span>{" "}
+          Re-verify anywhere with{" "}
+          <code>{`dataforge attest verify ${filename} --data ${sourceName}`}</code>.
         </p>
       </div>
     </motion.section>

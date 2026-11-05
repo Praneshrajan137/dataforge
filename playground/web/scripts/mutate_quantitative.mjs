@@ -23,6 +23,26 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const TOKENS = "src/design/quantitative-tokens.json";
 
+function writeFileRetry(path, content) {
+  // On Windows, a child Node process or Windows Defender can hold a brief sharing lock
+  // on a mutated file for a few milliseconds after execFileSync returns. Throwing inside
+  // `finally` leaves the source file mutated on disk, so retry transient lock errors.
+  const sleepBuf = new Int32Array(new SharedArrayBuffer(4));
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      writeFileSync(path, content, { encoding: "utf8" });
+      return;
+    } catch (error) {
+      const code = error && typeof error === "object" ? error.code : "";
+      if ((code === "EBUSY" || code === "EPERM" || code === "UNKNOWN") && attempt < 8) {
+        Atomics.wait(sleepBuf, 0, 0, 25 * (attempt + 1));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 /** Line endings are CRLF in this checkout, so patterns must not assume "\n". */
 const NL = String.raw`\r?\n`;
 
@@ -171,7 +191,7 @@ for (const mutant of MUTANTS) {
     survivors += 1;
     continue;
   }
-  writeFileSync(mutant.file, mutated);
+  writeFileRetry(mutant.file, mutated);
   try {
     const result = run(kind);
     if (result.exit === 0) {
@@ -181,7 +201,7 @@ for (const mutant of MUTANTS) {
       console.log(`killed    ${mutant.name} [${kind}]`);
     }
   } finally {
-    writeFileSync(mutant.file, original);
+    writeFileRetry(mutant.file, original);
   }
 }
 

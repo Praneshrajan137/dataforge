@@ -15,6 +15,9 @@ export default defineConfig({
         // The split is also the caching-honest shape -- app code changes on every
         // deploy, these four dependencies do not.
         manualChunks: (id) => {
+          if (id.includes("/src/attestation/") || id.includes("\\src\\attestation\\")) {
+            return "attestation";
+          }
           if (!id.includes("node_modules")) {
             return undefined;
           }

@@ -134,6 +134,12 @@ def _stable_analyze_payload(payload: dict[str, object]) -> dict[str, object]:
     stable["receipt"]["constraints_artifact_sha256"] = "<constraints_artifact_sha256>"
     stable["apply_handoff"]["audit_command"] = "<audit_command>"
     stable["apply_handoff"]["revert_command"] = "<revert_command>"
+    if "attestation" in stable:
+        predicate = stable["attestation"]["statement"]["predicate"]
+        predicate["produced_at"] = "<produced_at>"
+        predicate["journal"]["txn_id"] = "<txn_id>"
+        predicate["revert_command"] = "<revert_command>"
+        predicate["authority"]["constraints_sha256"] = "<constraints_artifact_sha256>"
     return stable
 
 
@@ -1227,3 +1233,46 @@ def test_rate_limit_returns_429_on_eleventh_post(client: TestClient) -> None:
     )
     _assert_problem_response(response, status=429, error="rate_limit_exceeded")
     assert response.headers["retry-after"] == "60"
+
+
+@pytest.mark.integration
+def test_analyze_and_verify_fixes_emit_normative_13_check_attestation(client: TestClient) -> None:
+    """Both /api/analyze and /api/verify-fixes return the normative 13-check in-toto attestation."""
+    from dataforge.attestation import NORMATIVE_CHECKS
+
+    csv_bytes = client.get("/api/samples/hospital_10rows").content
+    analyze_resp = client.post(
+        "/api/analyze",
+        files={"file": ("hospital_10rows.csv", io.BytesIO(csv_bytes), "text/csv")},
+    )
+    assert analyze_resp.status_code == 200
+    analyze_body = analyze_resp.json()
+    assert analyze_body["certificate"]["ok"] is True
+    att = analyze_body["attestation"]
+    assert att["ok"] is True
+    assert {c["name"] for c in att["checks"]} == set(NORMATIVE_CHECKS) - {"signature"}
+    assert att["statement"]["predicate"]["verification"]["checks_available"] == list(
+        NORMATIVE_CHECKS
+    )
+    data_check = next(c for c in att["checks"] if c["name"] == "data_identity")
+    assert data_check["ok"] is True and data_check["skipped"] is False
+
+    scenario = client.get("/api/verify-scenarios/hospital_10rows").json()
+    verify_resp = client.post(
+        "/api/verify-fixes",
+        files={"file": ("hospital_10rows.csv", io.BytesIO(csv_bytes), "text/csv")},
+        data={
+            "fixes": json.dumps(scenario["fixes"]),
+            "accepted_constraint_ids": json.dumps(scenario["accepted_constraint_ids"]),
+            "proposer": scenario["proposer"],
+            "declared_schema": scenario["declared_schema"],
+        },
+    )
+    assert verify_resp.status_code == 200
+    verify_body = verify_resp.json()
+    v_att = verify_body["attestation"]
+    assert v_att["ok"] is True
+    assert {c["name"] for c in v_att["checks"]} == set(NORMATIVE_CHECKS) - {"signature"}
+    auth_check = next(c for c in v_att["checks"] if c["name"] == "authority_is_entailed")
+    assert auth_check["ok"] is True
+    assert "conferred by" in auth_check["detail"]

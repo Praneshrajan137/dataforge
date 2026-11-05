@@ -230,6 +230,45 @@ function verifyFixesPayload() {
         },
       ],
     },
+    attestation: {
+      ok: true,
+      checks: [],
+      statement: {
+        _type: "https://in-toto.io/Statement/v1",
+        subject: [{ name: "hospital_10rows.csv", digest: { sha256: sourceHash } }],
+        predicateType: "https://dataforge.dev/RepairAttestation/v1",
+        predicate: {
+          attestation_version: "1",
+          tool: { name: "dataforge", version: "0.1.0" },
+          produced_at: "2026-05-20T12:00:00Z",
+          mode: "dry_run",
+          applied: false,
+          reversible: true,
+          source: { name: "hospital_10rows.csv", digest: { sha256: sourceHash } },
+          post: null,
+          authority: {
+            authoritative_columns: ["er_wait_time", "rating"],
+            accepted_constraint_ids: ["cnd-er-type", "cnd-rating-type"],
+            constraints_sha256: "e".repeat(64),
+            constraints: { schema_format: "dataforge.premise/v1" },
+            premise: {
+              premise_format: "dataforge.premise/v1",
+              columns: { er_wait_time: "integer", rating: "float" },
+            },
+          },
+          fixes: [],
+          held: [],
+          verdicts: {
+            safety: "allow",
+            verifier: "accept",
+            independent_verification: "agreed",
+          },
+          journal: { txn_id: null, patch_plan_sha256: null },
+          revert_command: null,
+          limitations: [],
+        },
+      },
+    },
     apply_handoff: {
       source_name: "hospital_10rows.csv",
       dry_run_command:
@@ -387,7 +426,9 @@ test("sample path analyzes, accepts constraints, exports evidence, and passes ac
   await expect(receiptPanel.getByText("txn-demo", { exact: true })).toBeVisible();
   await expect(receiptPanel.getByLabel("Repair receipt summary").getByText("Independent verify")).toBeVisible();
   await expect(receiptPanel.getByRole("heading", { name: "Re-verified 3/3 checks" })).toBeVisible();
+  await expect(receiptPanel.getByRole("heading", { name: "Browser verified 11/11 normative checks" })).toBeVisible();
   await expect(receiptPanel.getByRole("button", { name: "Download portable certificate" })).toBeVisible();
+  await expect(receiptPanel.getByRole("button", { name: "Download in-toto Statement" })).toBeVisible();
   await expect(receiptPanel).toContainText("constraints.json");
 
   const receiptToolbar = page.locator(".receipt-toolbar");
@@ -456,7 +497,13 @@ test("guardrail verifies an untrusted agent batch and passes accessibility", asy
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Re-verified 3/3 checks" })).toBeVisible();
   await expect(
+    page.getByRole("heading", { name: "Browser verified 11/11 normative checks" }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("button", { name: "Download portable certificate" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Download in-toto Statement" }),
   ).toBeVisible();
 
   const scan = await new AxeBuilder({ page }).analyze();

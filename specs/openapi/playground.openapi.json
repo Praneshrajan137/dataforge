@@ -128,6 +128,9 @@
           "apply_handoff": {
             "$ref": "#/components/schemas/ApplyHandoff"
           },
+          "attestation": {
+            "$ref": "#/components/schemas/AttestationVerificationView"
+          },
           "certificate": {
             "$ref": "#/components/schemas/CertificateView"
           },
@@ -186,6 +189,7 @@
           "repairs",
           "verification",
           "certificate",
+          "attestation",
           "txn_journal",
           "receipt",
           "apply_handoff",
@@ -232,6 +236,62 @@
           "note"
         ],
         "title": "ApplyHandoff",
+        "type": "object"
+      },
+      "AttestationCheckView": {
+        "description": "One named check from the 13-check normative in-toto attestation verifier.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "skipped": {
+            "default": false,
+            "title": "Skipped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "ok",
+          "detail"
+        ],
+        "title": "AttestationCheckView",
+        "type": "object"
+      },
+      "AttestationVerificationView": {
+        "description": "Normative 13-check in-toto attestation verification attached to Playground responses.\n\nPairs the built ``dataforge.repair.attestation/v1`` in-toto Statement with the result of\nrunning :func:`dataforge.attestation.verify_attestation` against the exact uploaded bytes.",
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/AttestationCheckView"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "statement": {
+            "additionalProperties": true,
+            "title": "Statement",
+            "type": "object"
+          }
+        },
+        "required": [
+          "ok",
+          "statement"
+        ],
+        "title": "AttestationVerificationView",
         "type": "object"
       },
       "Body_analyze_api_analyze_post": {
@@ -355,6 +415,17 @@
             "title": "Confirm Escalations",
             "type": "boolean"
           },
+          "declared_schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared Schema"
+          },
           "file": {
             "contentMediaType": "application/octet-stream",
             "title": "File",
@@ -425,6 +496,7 @@
                   "ambiguous_fd",
                   "out_of_inferred_domain",
                   "inferred_fd_not_declared",
+                  "mined_constraint_not_declared",
                   "unverified_transposition",
                   "unverified_entity_consensus",
                   "stale_precondition",
@@ -1982,6 +2054,7 @@
                   "ambiguous_fd",
                   "out_of_inferred_domain",
                   "inferred_fd_not_declared",
+                  "mined_constraint_not_declared",
                   "unverified_transposition",
                   "unverified_entity_consensus",
                   "stale_precondition",
@@ -2041,6 +2114,9 @@
           "apply_handoff": {
             "$ref": "#/components/schemas/ApplyHandoff"
           },
+          "attestation": {
+            "$ref": "#/components/schemas/AttestationVerificationView"
+          },
           "authoritative_schema": {
             "title": "Authoritative Schema",
             "type": "boolean"
@@ -2092,6 +2168,7 @@
           "receipt",
           "verification",
           "certificate",
+          "attestation",
           "apply_handoff",
           "limitations",
           "meta"
@@ -2108,6 +2185,17 @@
             },
             "title": "Accepted Constraint Ids",
             "type": "array"
+          },
+          "declared_schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared Schema"
           },
           "fixes": {
             "items": {

@@ -52,7 +52,9 @@ from dataforge import (
 )
 from dataforge.agent import AgentRepairRequest, run_agent_repair
 from dataforge.agent.policy import PolicyUnavailableError
+from dataforge.attestation import build_attestation, verify_attestation
 from dataforge.certificate import verify_certificate
+from dataforge.domain.premise import premise_to_canonical
 
 # The severity ENUM is exported from dataforge; this is the string form the HTTP
 # contract speaks. Aliased so the two cannot be confused at a call site.
@@ -588,6 +590,27 @@ class CertificateView(BaseModel):
     checks: list[CertificateCheckView] = Field(default_factory=list)
 
 
+class AttestationCheckView(BaseModel):
+    """One named check from the 13-check normative in-toto attestation verifier."""
+
+    name: str
+    ok: bool
+    detail: str
+    skipped: bool = False
+
+
+class AttestationVerificationView(BaseModel):
+    """Normative 13-check in-toto attestation verification attached to Playground responses.
+
+    Pairs the built ``dataforge.repair.attestation/v1`` in-toto Statement with the result of
+    running :func:`dataforge.attestation.verify_attestation` against the exact uploaded bytes.
+    """
+
+    ok: bool
+    checks: list[AttestationCheckView] = Field(default_factory=list)
+    statement: dict[str, Any]
+
+
 class ApplyHandoff(BaseModel):
     """Local CLI handoff for reversible apply outside the hosted playground."""
 
@@ -679,6 +702,7 @@ class AnalyzeResponse(BaseModel):
     repairs: list[VerifiedFixView]
     verification: VerificationSummary
     certificate: CertificateView
+    attestation: AttestationVerificationView
     txn_journal: RepairJournalView
     receipt: RepairReceiptView
     apply_handoff: ApplyHandoff
@@ -744,6 +768,7 @@ class VerifyFixesResponse(BaseModel):
     receipt: RepairReceiptView
     verification: VerificationSummary
     certificate: CertificateView
+    attestation: AttestationVerificationView
     apply_handoff: ApplyHandoff
     limitations: list[str]
     meta: ResponseMeta
@@ -1556,6 +1581,42 @@ def _certificate_view(receipt: Any, *, source_bytes: bytes) -> CertificateView:
     )
 
 
+def _attestation_view(
+    result: Any,
+    *,
+    upload_name: str,
+    source_bytes: bytes,
+) -> AttestationVerificationView:
+    """Build and verify the normative 13-check in-toto Statement for a Playground run."""
+    constraints_mapping = (
+        premise_to_canonical(result.authority_schema)
+        if result.authority_schema is not None
+        else None
+    )
+    statement = build_attestation(
+        result.receipt.model_dump(mode="json"),
+        tool_version=app.version,
+        produced_at=datetime.now(UTC).isoformat(),
+        subject_name=upload_name,
+        constraints=constraints_mapping,
+        authority_schema=result.authority_schema,
+    )
+    verification = verify_attestation(statement, data_bytes=source_bytes)
+    return AttestationVerificationView(
+        ok=verification.ok,
+        checks=[
+            AttestationCheckView(
+                name=check.name,
+                ok=check.ok,
+                detail=check.detail,
+                skipped=check.skipped,
+            )
+            for check in verification.checks
+        ],
+        statement=statement,
+    )
+
+
 def _candidate_views(artifact: Any) -> list[ConstraintCandidateView]:
     """Format reviewable inferred constraints for the browser."""
     candidates: list[ConstraintCandidateView] = []
@@ -1906,6 +1967,11 @@ def _analyze_upload(
             failure_reasons=list(result.receipt.failure_reasons),
         ),
         certificate=_certificate_view(result.receipt, source_bytes=source_bytes),
+        attestation=_attestation_view(
+            result,
+            upload_name=upload_name,
+            source_bytes=source_bytes,
+        ),
         txn_journal=_journal_view(result.transaction, source_name=upload_name),
         receipt=receipt,
         apply_handoff=_apply_handoff(upload_name, receipt),
@@ -2067,6 +2133,11 @@ def _verify_fixes_upload(
             failure_reasons=list(result.receipt.failure_reasons),
         ),
         certificate=_certificate_view(result.receipt, source_bytes=source_bytes),
+        attestation=_attestation_view(
+            result,
+            upload_name=upload_name,
+            source_bytes=source_bytes,
+        ),
         apply_handoff=_verify_apply_handoff(upload_name, receipt),
         limitations=[
             "Hosted verification is stateless and dry-run only; no upload is ever mutated.",

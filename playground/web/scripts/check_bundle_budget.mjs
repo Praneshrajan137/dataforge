@@ -79,6 +79,10 @@ export const BUDGETS = {
     // New chunk, new ceiling. Measured 43,950 B gzip + 5%, rounded up, by the same rule as the
     // others.
     motion: 47_000,
+    // Independent browser in-toto v1 attestation verifier (`src/attestation/verify.ts`), isolated
+    // so the verification kernel's weight is attributable. Measured 4,812 B gzip + 5% (5,053 B),
+    // rounded up to 5,200 B while keeping totalJsBytes unchanged at 161,000 B.
+    attestation: 5_200,
     "rolldown-runtime": 2_000,
   },
   totalJsBytes: 161_000,

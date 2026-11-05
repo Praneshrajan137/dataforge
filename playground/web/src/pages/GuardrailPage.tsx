@@ -2,12 +2,12 @@ import { DataForgeClient } from "../api";
 import { GuardrailVerdictPanel, WouldApplyList } from "../components/agent";
 import { BackendStatus } from "../components/mission";
 import { EvidenceNote, LoadingState, ProblemBanner } from "../components/primitives";
-import { CertificatePanel, HeldForReviewList } from "../components/trust";
+import { AttestationPanel, CertificatePanel, HeldForReviewList } from "../components/trust";
 import { parseCsvPreview, validateCsvFile } from "../csv";
 import { buildGuardrailVerdict } from "../observatory";
 import type { ProductRouteId } from "../routes";
 import type { BackendCapability, CsvPreview, ExternalFix, ProblemDetail, VerifyFixesResponse } from "../types";
-import { SAMPLE_OPTIONS, downloadCertificate, localProblem, problemFromUnknown } from "../ui/helpers";
+import { SAMPLE_OPTIONS, downloadAttestation, downloadCertificate, localProblem, problemFromUnknown } from "../ui/helpers";
 import type { WorkState } from "../ui/helpers";
 import { ShieldCheck } from "lucide-react";
 import { useRef, useState } from "react";
@@ -359,6 +359,16 @@ export function GuardrailPage({
             auditCommand={result.apply_handoff.audit_command}
             onDownload={() => downloadCertificate(result)}
           />
+          {result.attestation ? (
+            <AttestationPanel
+              attestation={result.attestation}
+              sourceSha256={result.source.sha256}
+              sourceName={result.source.name}
+              onDownloadAttestation={() =>
+                downloadAttestation(result.attestation!.statement, result.source.sha256)
+              }
+            />
+          ) : null}
           <section className="route-actions" aria-label="Next pages">
             <button type="button" onClick={() => onNavigate("run")}>
               Back to the repair loop

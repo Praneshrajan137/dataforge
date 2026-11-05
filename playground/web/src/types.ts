@@ -318,6 +318,19 @@ export interface Certificate {
   checks: CertificateCheck[];
 }
 
+export interface AttestationCheckView {
+  name: string;
+  ok: boolean;
+  detail: string;
+  skipped: boolean;
+}
+
+export interface AttestationVerificationView {
+  ok: boolean;
+  checks: AttestationCheckView[];
+  statement: Record<string, unknown>;
+}
+
 export interface ApplyHandoff {
   source_name: string;
   dry_run_command: string;
@@ -347,6 +360,7 @@ export interface AnalyzeResponse {
   repairs: VerifiedFix[];
   verification: VerificationSummary;
   certificate: Certificate;
+  attestation?: AttestationVerificationView;
   txn_journal: RepairJournal;
   receipt: RepairReceipt;
   apply_handoff: ApplyHandoff;
@@ -462,6 +476,7 @@ export interface VerifyFixesResponse {
   receipt: RepairReceipt;
   verification: VerificationSummary;
   certificate: Certificate;
+  attestation?: AttestationVerificationView;
   apply_handoff: ApplyHandoff;
   limitations: string[];
   meta: {

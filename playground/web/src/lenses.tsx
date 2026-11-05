@@ -16,12 +16,12 @@ import {
 } from "./components/primitives";
 import { ReceiptHandoff, ReceiptSummary } from "./components/receipt";
 import { CandidateRepairList, RepairComparison } from "./components/repairs";
-import { CertificatePanel, FailureList, HeldForReviewList } from "./components/trust";
+import { AttestationPanel, CertificatePanel, FailureList, HeldForReviewList } from "./components/trust";
 import { motionDurations } from "./motion";
 import { buildObservatoryView, humanizeVerifierVerdict, shortHash, strengthOf } from "./observatory";
 import type { SelectedEvidence } from "./observatory";
 import type { AnalyzeResponse, CsvPreview, DatasetInput, IssueGroup, Severity } from "./types";
-import { downloadCertificate } from "./ui/helpers";
+import { downloadAttestation, downloadCertificate } from "./ui/helpers";
 import type { SortKey, WorkState } from "./ui/helpers";
 import { Activity, FileText, ShieldCheck, Wrench } from "lucide-react";
 import { motion } from "motion/react";
@@ -281,6 +281,16 @@ export function ReceiptLens({
         auditCommand={analysis.apply_handoff.audit_command}
         onDownload={() => downloadCertificate(analysis)}
       />
+      {analysis.attestation ? (
+        <AttestationPanel
+          attestation={analysis.attestation}
+          sourceSha256={analysis.source.sha256}
+          sourceName={analysis.source.name}
+          onDownloadAttestation={() =>
+            downloadAttestation(analysis.attestation!.statement, analysis.source.sha256)
+          }
+        />
+      ) : null}
       <ReceiptHandoff analysis={analysis} />
       <div className="hash-grid">
         <motion.button

@@ -8,7 +8,7 @@
 import { ApiProblemError } from "../api";
 import { shortHash } from "../observatory";
 import type { InstrumentTone, ReviewItem, SelectedEvidence } from "../observatory";
-import type { AnalyzeResponse, ConstraintCandidate, IssueGroup, ProblemDetail, RepairFailure, Severity, VerifiedFix } from "../types";
+import type { AnalyzeResponse, AttestationVerificationView, ConstraintCandidate, IssueGroup, ProblemDetail, RepairFailure, Severity, VerifiedFix } from "../types";
 
 export type WorkState = "idle" | "loading" | "ready" | "error";
 export type SortKey = "severity" | "count" | "column";
@@ -65,6 +65,7 @@ export function repairKey(fix: VerifiedFix): string {
 export function downloadCertificate(analysis: {
   source: AnalyzeResponse["source"];
   certificate: AnalyzeResponse["certificate"];
+  attestation?: AttestationVerificationView;
   receipt: AnalyzeResponse["receipt"];
   apply_handoff: AnalyzeResponse["apply_handoff"];
 }): void {
@@ -79,6 +80,7 @@ export function downloadCertificate(analysis: {
       columns: analysis.source.columns,
     },
     certificate: analysis.certificate,
+    ...(analysis.attestation ? { attestation: analysis.attestation } : {}),
     receipt: analysis.receipt,
     audit_command: analysis.apply_handoff.audit_command,
   };
@@ -87,6 +89,25 @@ export function downloadCertificate(analysis: {
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = `dataforge-certificate-${shortHash(analysis.source.sha256)}.json`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function downloadAttestation(
+  statement: Record<string, unknown>,
+  sourceSha256: string,
+): void {
+  // Emits the bare in-toto v1 Statement (`dataforge.repair.attestation/v1`) directly
+  // consumable by `dataforge attest verify` or any clean-room third-party verifier.
+  const blob = new Blob([JSON.stringify(statement, null, 2)], {
+    type: "application/vnd.in-toto+json",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `dataforge-attestation-${shortHash(sourceSha256)}.intoto.json`;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
