@@ -45,6 +45,7 @@ eval/
 training/
 tests/
 docs/
+documentation/
 notebooks/
 *.ipynb
 scripts/

@@ -1,0 +1,8 @@
+# Archived sources in `01_sources/` are SHA-256 hash-frozen over LF-normalised bytes and
+# checked by `_tools/verify_corpus_integrity.py`, which refuses `\r\n` bytes. Without this
+# rule, `core.autocrlf=true` on a Windows checkout rewrites LF blobs to CRLF in the worktree
+# and breaks every archive digest on checkout.
+*.md text eol=lf
+*.csv text eol=lf
+*.json text eol=lf
+*.py text eol=lf
