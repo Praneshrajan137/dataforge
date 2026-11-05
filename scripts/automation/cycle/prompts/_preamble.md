@@ -110,11 +110,63 @@ entries including the artifacts the repository's own checks read (`eval/results`
 `specs/openapi`, `tests/fixtures`), and excludes `data/`, `node_modules` and one frozen corpus.
 Anything absent is absent by design: record it as a scope limit.
 
-Building a virtualenv is encouraged wherever it helps you verify something:
+=====================================================================
+THE INTERPRETER: USE THE OFFLINE WHEELHOUSE, NEVER PLAIN `pip install`
+=====================================================================
+Measured facts about this sandbox (probe fire, 2026-09-17):
 
-    python3 -m venv /tmp/venv && /tmp/venv/bin/pip install -q -e '/tmp/src[dev]'
+    /usr/bin/python3      Python 3.12.13   (/usr/bin/python3.13 also exists)
+    platform              linux-x86_64
+    pip                   26.1.2
+    duckdb, pandas, numpy NOT importable under system python
+    pytest                NOT on PATH
 
-Roughly 16 packages, ~141 s, ~190 MB, measured. Put it OUTSIDE `/tmp/src` or it lands in the patch.
+**DO NOT RUN `pip install -e '/tmp/src[dev]'` AGAINST PyPI. IT DOES NOT FINISH.** An earlier version
+of this document claimed "~16 packages, ~141 s" - that figure was wrong and it cost two separate Day 4
+cycles most of their budget. The real dependency closure includes `scipy`, `pandas`, `pyarrow`,
+`numpy`, `z3-solver`, `causal-learn` and `hyppo`. Measured on 2026-09-16, twice: the install was still
+running at ~10 minutes, `/tmp/venv4/READY` never appeared, and `import duckdb` still failed. Day 4
+consequently certified nothing and reported `unit=not-run-no-interpreter`.
+
+Install from the wheelhouse on the stage instead, which needs no network. **Unset `PYTHONPATH`
+first - this is not optional:**
+
+    env -u PYTHONPATH /usr/bin/python3.12 -m venv /tmp/venv
+    env -u PYTHONPATH /tmp/venv/bin/pip install -q --no-index --find-links=/workspace/wheels \
+        -r /workspace/wheels/requirements.txt
+    env -u PYTHONPATH /tmp/venv/bin/python -c "import pytest, pluggy, numpy, pandas, pydantic, z3, \
+        duckdb, sqlglot, scipy, networkx, tenacity, fastapi, cryptography, jsonschema, typer; \
+        print('VENV_READY')"
+
+Measured on 2026-09-17: 21 seconds, 60 wheels, `PIP_EXIT=0`, zero warnings.
+
+**Note there is no `-e` and no install of the project itself.** You do not need one:
+`pyproject.toml` sets `pythonpath = ["."]` under `[tool.pytest.ini_options]`, so pytest puts the tree
+root on `sys.path` for you. That also avoids needing a build backend, which `--no-index` could not
+fetch anyway. Run pytest with the tree as the working directory and `import dataforge` resolves.
+
+Rules that follow from this:
+
+1. **`env -u PYTHONPATH` is mandatory.** This sandbox exports a `PYTHONPATH` containing ~150 host
+   `site-packages` directories. Without unsetting it, pip considers 26 of the 60 wheels "already
+   satisfied" - including `pluggy`, `numpy`, `pandas`, `pydantic`, `pydantic_core`, `scipy` and
+   `pyyaml` - and you get a venv that silently mixes host versions with staged ones. It does not
+   error. It reports success. Measured: the leaked run collected 2524 tests with 1 error, the
+   isolated run collected 2539 with 0. Use `env -u PYTHONPATH` for the venv, the install, AND every
+   pytest invocation.
+2. **`--no-index` is mandatory.** Without it pip silently falls back to PyPI and you are back in the
+   failure above, with identical-looking output for the first several minutes.
+3. **LIVENESS IS NOT COMPLETION.** A `pip` process that is still alive is not a finished install, and
+   a directory that exists is not a working environment. Prove it with the `VENV_READY` import line
+   above - which deliberately imports the packages most likely to have leaked - and treat anything
+   else as no interpreter.
+4. If the wheelhouse is missing or the import line fails, say so explicitly and record
+   `unit=not-run-no-interpreter`. Do NOT silently downgrade to reading the code and then report as
+   though you had run the suite.
+5. Put the venv OUTSIDE `/tmp/src` or it lands in the patch.
+6. The wheelhouse covers what `tests/unit` needs and deliberately excludes the ML stack (`torch`,
+   `transformers`, `trl`, `datasets`). Those imports are guarded and produce no collection errors.
+   Do not try to install them; you will not succeed inside the wall clock.
 
 =====================================================================
 YOUR INPUTS, AND WHAT EACH ONE IS FOR
@@ -146,14 +198,14 @@ WHICH SESSION AM I?
 Your PHASE is certain: this prompt tells you, further down, whether you are EXPLORE, PLAN, CODE or
 VERIFY. Never infer it.
 
-Your SLOT is best-effort. Determine it with:
+Your SLOT is also certain, and it is STATED IN THE FIRST LINES OF THIS PROMPT ("YOU ARE SLOT S..").
+Use that. **Do not compute your slot from the clock.** A previous session did, read `Wed 22:00`
+inside the container, and had to override its own arithmetic; the container clock is not a reliable
+witness to the schedule it was launched by. The stated slot is written by the same script that writes
+the cron, so it cannot disagree with the schedule.
 
-    TZ=Asia/Kolkata date '+%a %H:%M'
-
-and map: 00:30 -> S1, 01:15 -> S2, 02:00 -> S3, 02:45 -> S4, 03:30 -> S5. Take the nearest slot at
-or before the current time. (Note UTC would mislead you: 00:30 IST is 19:00 UTC the PREVIOUS day.)
-
-THEN CHECK `COVERAGE.json`. If your slot's assignment is already recorded complete, an earlier
+THEN CHECK `COVERAGE.json`. This is the one legitimate reason to work on something other than your
+stated slot's assignment. If your slot's assignment is already recorded complete, an earlier
 session ran late or ran twice: take the EARLIEST assignment for your phase that is not yet
 complete. If every assignment for your phase is complete, do not invent work - instead deepen the
 weakest existing artifact, or attack the highest-ranked open question, and say clearly in your

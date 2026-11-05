@@ -112,8 +112,13 @@ $days = @(
 
 if ($OnlyDay) { $days = @($days | Where-Object { $_.N -eq $OnlyDay }) }
 
-# --- Assemble one prompt per phase -----------------------------------------------------
-Write-Step 'Assembling phase prompts'
+# --- Assemble one prompt per phase AND slot --------------------------------------------
+# One prompt per (day, slot), not one per day. The extra 16 files exist so each session can be TOLD
+# which slot it is instead of inferring it from the clock. Inference was measurably unreliable: the
+# D4S5 session of cycle 2026-09-14 read `Wed 22:00` and had to override its own slot calculation.
+# This script already knows the slot exactly - it is writing the cron - so guessing downstream was
+# never necessary.
+Write-Step 'Assembling phase prompts (one per day and slot)'
 
 $preamblePath = Join-Path $PromptDir '_preamble.md'
 if (-not (Test-Path $preamblePath)) { throw "Missing preamble at $preamblePath" }
@@ -121,22 +126,41 @@ $preamble = (Get-Content $preamblePath -Raw).TrimEnd()
 
 if (-not (Test-Path $BuildDir)) { New-Item -ItemType Directory -Path $BuildDir -Force | Out-Null }
 
+# Keyed '<day>_<slot>' so the create loop cannot pick up the wrong file.
+$promptPaths = @{}
+
 foreach ($d in $days) {
     $bodyPath = Join-Path $PromptDir $d.File
     if (-not (Test-Path $bodyPath)) { throw "Missing phase prompt at $bodyPath" }
-    $combined = $preamble + "`n`n" + (Get-Content $bodyPath -Raw)
+    $body = Get-Content $bodyPath -Raw
 
-    # A prompt containing '$$' collides with the SQL body delimiter in the generated
-    # CREATE AGENT TASK. Fail here with a clear message rather than at Snowflake with a syntax
-    # error that gives no hint which prompt is at fault.
-    if ($combined -match '\$\$') {
-        throw "Prompt for day $($d.N) contains '`$`$', which collides with the SQL body delimiter."
+    foreach ($s in $slots) {
+        # First lines of the prompt on purpose: this is the highest-attention position, and the
+        # preamble itself cites Liu et al. on accuracy being best at the beginning of an input.
+        $slotHeader = @"
+YOU ARE SLOT S$($s.N) OF 5. You fire at $($s.At) Asia/Kolkata on $($d.DayName), phase $($d.Phase).
+
+This is STATED, not inferred. Do NOT work out your slot from the clock - the container clock has
+been observed disagreeing with the schedule. Use S$($s.N) everywhere you are asked for your slot.
+The only reason to depart from it is the COVERAGE.json check described below, which handles the case
+where an earlier session died or ran twice.
+
+"@
+        $combined = $slotHeader + $preamble + "`n`n" + $body
+
+        # A prompt containing '$$' collides with the SQL body delimiter in the generated
+        # CREATE AGENT TASK. Fail here with a clear message rather than at Snowflake with a syntax
+        # error that gives no hint which prompt is at fault.
+        if ($combined -match '\$\$') {
+            throw "Prompt for day $($d.N) slot $($s.N) contains '`$`$', which collides with the SQL body delimiter."
+        }
+
+        $out = Join-Path $BuildDir ("day{0}s{1}.md" -f $d.N, $s.N)
+        [System.IO.File]::WriteAllText($out, $combined, (New-Object System.Text.UTF8Encoding($false)))
+        $promptPaths["$($d.N)_$($s.N)"] = $out
     }
 
-    $out = Join-Path $BuildDir ("day{0}.md" -f $d.N)
-    [System.IO.File]::WriteAllText($out, $combined, (New-Object System.Text.UTF8Encoding($false)))
-    $d | Add-Member -NotePropertyName PromptPath -NotePropertyValue $out
-    Write-Note ("day {0} {1,-8} {2,6} chars  {3}" -f $d.N, $d.Phase, $combined.Length, $d.DayName)
+    Write-Note ("day {0} {1,-8} {2,6} chars x 5 slots  {3}" -f $d.N, $d.Phase, $combined.Length, $d.DayName)
 }
 
 # --- Create ----------------------------------------------------------------------------
@@ -155,11 +179,14 @@ foreach ($d in $days) {
             if ($drop.ExitCode -eq 0) { Write-Note "$name : dropped before recreate" }
         }
 
+        $promptPath = $promptPaths["$($d.N)_$($s.N)"]
+        if (-not $promptPath) { throw "No assembled prompt for day $($d.N) slot $($s.N)." }
+
         $args = @(
             'automation', 'create',
             '--connection', $Connection,
             '--name', $name,
-            '--prompt-file', $d.PromptPath,
+            '--prompt-file', $promptPath,
             '--schedule', $cron,
             '--timezone', $Timezone,
             '--workspace', $Workspace,

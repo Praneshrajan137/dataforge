@@ -186,7 +186,9 @@ def cmd_verify_lineage(args: argparse.Namespace) -> None:
                 if s.get("phase") == needed and s.get("status") == "OK"
             ]
             if not done:
-                problems.append(f"phase '{args.phase}' requires completed '{needed}' sessions; none recorded")
+                problems.append(
+                    f"phase '{args.phase}' requires completed '{needed}' sessions; none recorded"
+                )
 
     if problems:
         _fail("; ".join(problems), cycle_id=cycle.get("cycle_id"))
@@ -281,7 +283,9 @@ def cmd_close_question(args: argparse.Namespace) -> None:
         _fail("refusing to close a question with no evidence")
     coverage = _read_json(COVERAGE_JSON)
     closed = list(coverage.get("questions_closed", []))
-    closed.append({"id": args.id, "question": args.question, "evidence": args.evidence, "at": _now()})
+    closed.append(
+        {"id": args.id, "question": args.question, "evidence": args.evidence, "at": _now()}
+    )
     coverage["questions_closed"] = closed
     coverage["questions_open"] = [
         q for q in coverage.get("questions_open", []) if q.get("id") != args.id

@@ -232,6 +232,12 @@ overrule it, record why in `DECISIONS.md`.
 The cap exists because the pull request is the only human review point in this design. A diff too
 large to review defeats it. If the plan cannot fit, cut it and defer — deferral is a result.
 
+**Day 2 must budget for the carried-forward item.** C1 begins with a fix carried over from cycle
+2026-09-14 (the report-only revert branch, the spec contradiction, and a `restored` field with a cause
+discriminator — see C1). Reserve roughly 4 files and 120 net lines of the cap for it, and plan the rest
+of the slice around what remains. A plan that consumes the whole budget forces C1 to either exceed the
+cap or skip the carried item, and both outcomes have already cost one cycle.
+
 ---
 
 # Day 3 — WEDNESDAY — CODE
@@ -245,9 +251,40 @@ with the test for each. Do real red-green: run the new test, see it fail, implem
 record both. Regenerate the cumulative patch after every completed step. Leave a precise note in
 `IMPL_LOG.md` saying which step the next session starts from.
 
+### CARRIED FORWARD FROM CYCLE 2026-09-14 — DO THIS FIRST, BEFORE THE PLAN'S OWN FIRST STEP
+
+That cycle produced a patch that applied cleanly and was then REFUSED certification by its Day 4
+verifier, for three findings it verified independently by reading the applied code. The patch bytes
+are gone - they were diffed against that cycle's frozen snapshot and cannot be replayed against a new
+one - but the findings stand and the fix is small and well specified. Re-derive it against the current
+snapshot rather than trusting this summary:
+
+1. **`dataforge/transactions/revert.py` - the unapplied-transaction branch writes to a user's file on
+   evidence that cannot support it.** Its precondition is `source_kind == "file"` AND the path exists
+   AND `sha256_file != source_sha256`. That predicate **cannot distinguish "an apply was interrupted"
+   from "the user edited their own file"**, so it overwrites real user work; it restores the pre-image
+   only if the restore fails its own hash check. **Fix: make the branch REPORT-ONLY.** Keep the
+   corrected message and the on-disk hash branch, delete the write, and point the operator at the
+   snapshot path only when a snapshot actually exists. This single edit clears both hard blockers.
+2. **`specs/SPEC_transactions.md` contradicts itself three lines apart.** Case A.3a must say the file
+   is left untouched; the neighbouring unchanged path already refuses on this same class "to avoid
+   clobbering user edits", so the two halves currently disagree inside one file.
+3. **A log line was offered as the mitigation, and a log is not an instrument** - it records that
+   something happened without measuring whether it was correct. If a `restored` outcome is reported at
+   all, it must be a FIELD on the receipt and on `--json` on every surface, with a `restored=False`
+   cause discriminator, not a log message.
+
+If a restore is genuinely wanted later, it must be opt-in behind an explicit flag and must require
+evidence that actually distinguishes the two histories. Do not build that here.
+
+Add an acceptance test whose input is the DANGEROUS history - a user-edited file that the old
+precondition would have overwritten - so the test can actually fail. A test that cannot fail on the
+defect would leave this exactly where it was.
+
 ARTIFACT. `changes.patch`, `IMPL_LOG.md`
 
-BOUNDARIES. Follow the plan's order. Do not skip ahead to easier steps.
+BOUNDARIES. Follow the plan's order after the carried-forward item above. Do not skip ahead to easier
+steps.
 
 ## C2, C3, C4 — Continue in plan order
 

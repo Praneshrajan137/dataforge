@@ -93,10 +93,49 @@ is not evidence. If you write a test that cannot fail, you have written nothing.
 Do not attempt the full suite or the verbatim `make` targets; Day 4 verifies more broadly and the
 local gate is authoritative. Being killed halfway through a full-suite run helps nobody.
 
+=====================================================================
+BEFORE EVERY PATCH WRITE: AUDIT YOUR OWN CHANGE AS APPLIED
+=====================================================================
+Do this each time you regenerate `changes.patch`, not once at the end. It takes two minutes and it
+is the difference between Day 4 certifying your work and Day 4 refusing it.
+
+1. **Re-read each file you changed FROM DISK, not from your diff and not from memory.**
+   `cat` the actual file in `/tmp/src`. What you intended to write and what is on disk diverge more
+   often than feels possible, and Day 4 grades what is on disk.
+
+2. **For every guard, precondition or safeguard you added or leaned on, name the case that makes it
+   fail.** Write down both directions: what input makes it fire when it should not, and what input
+   makes it stay silent when it should fire. **If you cannot name a failing case, it is not an
+   instrument** - record it in `IMPL_LOG.md` as "not an instrument" instead of citing it as a
+   mitigation. A log line is not a safeguard: logging that something happened does not measure
+   whether it was correct, and offering one as mitigation is the exact move that got the previous
+   cycle refused.
+
+3. **If your change can WRITE to, overwrite, or delete a path a user controls, state what
+   distinguishes your intended trigger from a legitimate user state.** If the precondition cannot
+   tell those two apart, it is a data-loss defect and you must make the branch report-only instead.
+
+4. **Read the docstring, spec text and comments within about ten lines of every edit and check they
+   still agree with the code.** A file that contradicts itself a few lines apart is worse than one
+   that is merely wrong, because each half looks authoritative on its own.
+
+WORKED EXAMPLE - the real defect that made cycle 2026-09-14 uncertifiable. A Day 3 session changed
+`revert.py` so the unapplied-transaction branch WROTE to the user's file. Its precondition was
+`source_kind == "file"` and the path exists and `sha256_file != source_sha256`. That predicate cannot
+distinguish "an apply was interrupted" from "the user edited their own file", so it overwrites real
+user work. Three lines further down in the same spec, the unchanged path refused on that same class
+"to avoid clobbering user edits" - the file contradicted itself. The session cited a log line as the
+mitigation, and that log cannot measure whether the overwrite was correct. All four checks above
+would have caught it, and step 3 alone would have.
+
 YOUR ARTIFACT: `/workspace/cycle/changes.patch` plus an append to `/workspace/cycle/IMPL_LOG.md`
 recording: plan steps completed, steps skipped and why, tests written with their red and green
 results, checks run with their discriminating power, what the next session should pick up first, and
 the honest weakest point of what you wrote.
+
+`IMPL_LOG.md` must additionally carry a section titled `## Self-audit of this change` answering the
+four numbered points above, per file touched. Day 4 reads it, and an absent or hand-waving section
+is itself a finding against your work.
 
 If you produced no patch at all, that is FAILED. An empty or unchanged `changes.patch` reported as OK
 sends Day 4 and the local gate looking for work that does not exist.
