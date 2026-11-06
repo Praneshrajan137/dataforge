@@ -22,6 +22,7 @@ plausibility fixes) is intentionally not re-implemented here.
 from __future__ import annotations
 
 import re
+from decimal import Decimal, InvalidOperation
 
 from dataforge.domain.vocabulary import (
     ENCODABLE_FLOAT_TYPES,
@@ -63,16 +64,35 @@ def _normalize_type(column_type: str | None) -> str:
     return (column_type or "str").strip().lower()
 
 
-def _typed(value: str, column_type: str) -> int | float | str:
+_MAX_DECIMAL_EXPONENT = 1000
+
+
+def _finite_decimal(value: str | float | int) -> Decimal:
+    """Coerce a numeric literal to an exact finite Decimal, rejecting NaN/Inf."""
+    text = str(value).strip()
+    if not text:
+        raise ValueError("empty numeric literal")
+    try:
+        parsed = Decimal(text)
+    except InvalidOperation as exc:
+        raise ValueError(f"invalid decimal literal: {value!r}") from exc
+    if not parsed.is_finite():
+        raise ValueError(f"non-finite decimal literal: {value!r}")
+    if abs(parsed.adjusted()) > _MAX_DECIMAL_EXPONENT:
+        raise ValueError(f"decimal exponent out of range: {value!r}")
+    return parsed
+
+
+def _typed(value: str, column_type: str) -> int | Decimal | str:
     """Coerce a raw value to its declared type, raising ValueError if it cannot.
 
     Mirrors the primary verifier's z3 value factories: int columns require an
-    integer literal, float columns a real, string columns pass through.
+    integer literal, float/decimal columns an exact finite real, string columns pass through.
     """
     if column_type in _INT_TYPES:
         return int(value)
     if column_type in _FLOAT_TYPES:
-        return float(value)
+        return _finite_decimal(value)
     return str(value)
 
 
@@ -107,13 +127,29 @@ class DirectVerifier:
             return _accept("All proposed fixes passed structural verification (direct).")
 
         working_df = copy_table(df)
+        total_rows = row_count(working_df)
+        columns = set(column_names(working_df))
+        staged_targets: dict[tuple[int, str], str] = {}
+        for proposed in fixes:
+            fix = proposed.fix
+            if fix.operation != "update":
+                return _reject("Only cell updates are supported by the verifier.")
+            if fix.row < 0 or fix.row >= total_rows:
+                return _reject(f"Row {fix.row} is out of bounds for the input file.")
+            if fix.column not in columns:
+                return _reject(f"Column '{fix.column}' does not exist in the input file.")
+            target = (fix.row, fix.column)
+            if target in staged_targets and staged_targets[target] != fix.new_value:
+                return _reject(
+                    f"Conflicting candidate updates for row {fix.row}, column '{fix.column}'."
+                )
+            staged_targets[target] = fix.new_value
+            set_cell_value(working_df, fix.row, fix.column, fix.new_value)
+
         for proposed in fixes:
             result = self._verify_fix(working_df, schema, proposed)
             if result.verdict != VerificationVerdict.ACCEPT:
                 return result
-            set_cell_value(
-                working_df, proposed.fix.row, proposed.fix.column, proposed.fix.new_value
-            )
         return _accept("All proposed fixes passed the direct verifier.")
 
     def _verify_fix(
@@ -162,7 +198,12 @@ class DirectVerifier:
         ctype = _normalize_type(schema.column_type(column))
         if schema.domain_bounds_for(column):
             try:
-                float(new_value)
+                _finite_decimal(new_value)
+                for bound in schema.domain_bounds_for(column):
+                    if bound.min_value is not None:
+                        _finite_decimal(bound.min_value)
+                    if bound.max_value is not None:
+                        _finite_decimal(bound.max_value)
             except (TypeError, ValueError):
                 return _unknown(
                     f"Could not encode value '{new_value}' for column '{column}' as numeric for domain bound."
@@ -219,24 +260,18 @@ class DirectVerifier:
 
         # DOMAIN BOUNDS: numeric range with inclusive/exclusive endpoints.
         for bound in schema.domain_bounds_for(column):
-            numeric = float(new_value)
+            numeric = _finite_decimal(new_value)
             if bound.min_value is not None:
-                below = (
-                    numeric < bound.min_value
-                    if bound.inclusive_min
-                    else (numeric <= bound.min_value)
-                )
+                min_dec = _finite_decimal(bound.min_value)
+                below = numeric < min_dec if bound.inclusive_min else (numeric <= min_dec)
                 if below:
                     return _reject(
                         f"Value {numeric} for column '{column}' is below the minimum.",
                         (f"domain::{column}::min::row::{fix.row}",),
                     )
             if bound.max_value is not None:
-                above = (
-                    numeric > bound.max_value
-                    if bound.inclusive_max
-                    else (numeric >= bound.max_value)
-                )
+                max_dec = _finite_decimal(bound.max_value)
+                above = numeric > max_dec if bound.inclusive_max else (numeric >= max_dec)
                 if above:
                     return _reject(
                         f"Value {numeric} for column '{column}' is above the maximum.",

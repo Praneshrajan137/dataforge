@@ -28,6 +28,7 @@ if TYPE_CHECKING:
         run_repair_pipeline,
         verify_and_apply,
     )
+    from dataforge.gazetteer import GazetteerConflictError, ReferenceGazetteer
     from dataforge.integrations.dbt import (
         authoritative_schema_from_dbt_artifacts,
         authoritative_schema_from_dbt_manifest,
@@ -36,7 +37,14 @@ if TYPE_CHECKING:
     )
     from dataforge.repair_contract import CONTRACT_VERSION
     from dataforge.repairers import ProposedFix
-    from dataforge.safety import SafetyContext, SafetyFilter, SafetyResult, SafetyVerdict
+    from dataforge.safety import (
+        ConservationReport,
+        SafetyContext,
+        SafetyFilter,
+        SafetyResult,
+        SafetyVerdict,
+        check_table_conservation,
+    )
     from dataforge.schema_inference import (
         ConstraintCandidate,
         ConstraintReviewArtifact,
@@ -46,6 +54,7 @@ if TYPE_CHECKING:
         build_constraint_review_artifact,
         dump_constraint_review_artifact,
         infer_schema,
+        infer_verification_schema,
         load_constraint_review_artifact,
     )
     from dataforge.stores import (
@@ -62,10 +71,16 @@ if TYPE_CHECKING:
         TransactionAuditReport,
         TransactionAuditVerdict,
         TransactionLogError,
+        journal_head_sha256_for,
         verify_transaction_log,
     )
     from dataforge.transactions.revert import TransactionRevertError, revert_transaction
     from dataforge.transactions.txn import CellFix, RepairTransaction
+    from dataforge.triage_clusters import (
+        CausalCluster,
+        ClusterCompressionReport,
+        cluster_repairs,
+    )
     from dataforge.verifier import (
         ConstraintIR,
         SMTVerifier,
@@ -73,13 +88,18 @@ if TYPE_CHECKING:
         VerificationVerdict,
         constraint_ir_from_schema,
     )
+    from dataforge.verifier.differential import differential_verify
 
 __all__ = [
     "CONTRACT_VERSION",
     "CandidateFix",
     "CandidateRepair",
+    "CausalCluster",
     "CellFix",
+    "ClusterCompressionReport",
+    "ConservationReport",
     "ExternalFix",
+    "GazetteerConflictError",
     "ConstraintCandidate",
     "ConstraintReviewArtifact",
     "ConstraintReviewError",
@@ -94,6 +114,7 @@ __all__ = [
     "RepairPipelineResult",
     "RepairReceipt",
     "RepairTransaction",
+    "ReferenceGazetteer",
     "RootCause",
     "ReviewedConstraintCandidate",
     "SMTVerifier",
@@ -133,10 +154,15 @@ __all__ = [
     "schema_from_dbt_artifacts",
     "schema_from_dbt_manifest",
     "infer_schema",
+    "infer_verification_schema",
     "is_table_store_uri",
+    "journal_head_sha256_for",
     "run_table_store_repair",
     "store_from_uri",
     "verify_transaction_log",
+    "check_table_conservation",
+    "cluster_repairs",
+    "differential_verify",
 ]
 
 __version__ = "0.1.0"
@@ -145,8 +171,13 @@ _PUBLIC_EXPORTS: dict[str, tuple[str, str]] = {
     "CONTRACT_VERSION": ("dataforge.repair_contract", "CONTRACT_VERSION"),
     "CandidateFix": ("dataforge.engine.repair", "CandidateFix"),
     "CandidateRepair": ("dataforge.engine.repair", "CandidateRepair"),
+    "CausalCluster": ("dataforge.triage_clusters", "CausalCluster"),
     "CellFix": ("dataforge.transactions.txn", "CellFix"),
+    "ClusterCompressionReport": ("dataforge.triage_clusters", "ClusterCompressionReport"),
+    "ConservationReport": ("dataforge.safety.conservation", "ConservationReport"),
     "ExternalFix": ("dataforge.engine.repair", "ExternalFix"),
+    "GazetteerConflictError": ("dataforge.gazetteer", "GazetteerConflictError"),
+    "ReferenceGazetteer": ("dataforge.gazetteer", "ReferenceGazetteer"),
     "ConstraintCandidate": ("dataforge.schema_inference", "ConstraintCandidate"),
     "ConstraintReviewArtifact": ("dataforge.schema_inference", "ConstraintReviewArtifact"),
     "ConstraintReviewError": ("dataforge.schema_inference", "ConstraintReviewError"),
@@ -218,10 +249,15 @@ _PUBLIC_EXPORTS: dict[str, tuple[str, str]] = {
     "schema_from_dbt_artifacts": ("dataforge.integrations.dbt", "schema_from_dbt_artifacts"),
     "schema_from_dbt_manifest": ("dataforge.integrations.dbt", "schema_from_dbt_manifest"),
     "infer_schema": ("dataforge.schema_inference", "infer_schema"),
+    "infer_verification_schema": ("dataforge.schema_inference", "infer_verification_schema"),
     "is_table_store_uri": ("dataforge.stores", "is_table_store_uri"),
+    "journal_head_sha256_for": ("dataforge.transactions.log", "journal_head_sha256_for"),
     "run_table_store_repair": ("dataforge.stores", "run_table_store_repair"),
     "store_from_uri": ("dataforge.stores", "store_from_uri"),
     "verify_transaction_log": ("dataforge.transactions.log", "verify_transaction_log"),
+    "check_table_conservation": ("dataforge.safety.conservation", "check_table_conservation"),
+    "cluster_repairs": ("dataforge.triage_clusters", "cluster_repairs"),
+    "differential_verify": ("dataforge.verifier.differential", "differential_verify"),
 }
 
 

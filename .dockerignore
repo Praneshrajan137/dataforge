@@ -46,6 +46,8 @@ training/
 tests/
 docs/
 documentation/
+.agents/
+llms.txt
 notebooks/
 *.ipynb
 scripts/

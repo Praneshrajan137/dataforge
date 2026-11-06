@@ -265,3 +265,24 @@ class TestAgentSurfaceReportsHeldBatch:
             "NO_HIGH_VOLUME_AUTO_APPLY" in str(payload.verifier_reason)
             for payload in result.held_fixes
         ), "a held fix must carry the batch reason, not only the unproven reason"
+
+
+class TestOutcomeForRunEscalationParity:
+    """outcome_for_run and outcome_for_batch must derive identical escalation actions."""
+
+    def test_outcome_for_run_surfaces_needs_confirm_escalations_for_granular_flags(self) -> None:
+        from dataforge.safety.disposition import outcome_for_batch, outcome_for_run
+
+        disposition = evaluate_batch_disposition(_fixes(_budget() + 1))
+        batch_outcome = outcome_for_batch(disposition, issues_count=_budget() + 1, fixes_count=0)
+        run_outcome = outcome_for_run(
+            issues_count=_budget() + 1,
+            fixes_count=0,
+            held_count=len(disposition.held),
+            safety_verdict=disposition.verdict.value,
+            reason=disposition.reason,
+            required_confirm_flags=disposition.required_confirm_flags,
+        )
+        assert "needs_confirm_escalations" in batch_outcome.next_actions
+        assert run_outcome.next_actions == batch_outcome.next_actions
+        assert run_outcome.outcome_code == batch_outcome.outcome_code

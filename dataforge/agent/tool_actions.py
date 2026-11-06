@@ -32,6 +32,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 __all__ = [
+    "Abstain",
     "Action",
     "Diagnose",
     "Fix",
@@ -266,12 +267,35 @@ class Fix(BaseModel):
     model_config = {"frozen": True}
 
 
+class Abstain(BaseModel):
+    """Explicitly abstain on an ambiguous or unprovable cell rather than guessing."""
+
+    action_type: Literal["ABSTAIN"]
+    row: int = Field(ge=0, description="Zero-indexed row number.")
+    column: str = Field(min_length=1, description="Column name.")
+    reason: str = Field(
+        default="Insufficient authoritative evidence to prove repair.",
+        min_length=1,
+        description="Honest abstention rationale.",
+    )
+
+    model_config = {"frozen": True}
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Discriminated union and parser
 # ═══════════════════════════════════════════════════════════════════════════
 
 Action = Annotated[
-    InspectRows | SqlQuery | StatTest | PatternMatch | Hypothesis | RootCause | Diagnose | Fix,
+    InspectRows
+    | SqlQuery
+    | StatTest
+    | PatternMatch
+    | Hypothesis
+    | RootCause
+    | Diagnose
+    | Fix
+    | Abstain,
     Field(discriminator="action_type"),
 ]
 """Discriminated union of all valid DataForge environment actions."""

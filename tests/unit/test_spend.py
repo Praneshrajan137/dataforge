@@ -383,3 +383,117 @@ class TestBenchSpendReceipt:
             SimpleNamespace(records=[self._record(llm_calls=0), self._record(provider=None)])
         )
         assert not (tmp_path / "eval" / "results" / "spend_ledger.json").exists()
+
+
+class TestAnthropicOllamaAndStrictSpendGuard:
+    """Accountable metering for Anthropic Claude models, local Ollama, and strict caps."""
+
+    def test_anthropic_models_have_conservative_per_model_prices(self) -> None:
+        from dataforge.spend import is_model_priced, require_price_for
+
+        opus = require_price_for("anthropic", "claude-opus-4-7")
+        sonnet = require_price_for("anthropic", "claude-sonnet-4-6")
+        haiku = require_price_for("anthropic", "claude-haiku-4-5")
+        assert opus.usd_per_1k_input == pytest.approx(0.005)
+        assert opus.usd_per_1k_output == pytest.approx(0.025)
+        assert sonnet.usd_per_1k_input == pytest.approx(0.003)
+        assert sonnet.usd_per_1k_output == pytest.approx(0.015)
+        assert haiku.usd_per_1k_input == pytest.approx(0.001)
+        assert haiku.usd_per_1k_output == pytest.approx(0.005)
+        assert is_model_priced("anthropic", "claude-opus-5-5")
+
+    def test_anthropic_fallback_uses_conservative_opus_ceiling(self) -> None:
+        fallback = price_for("anthropic", "claude-future-unknown")
+        assert fallback == ModelPrice(usd_per_1k_input=0.005, usd_per_1k_output=0.025)
+
+    def test_ollama_is_unpriced_local_tier_even_under_strict_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DATAFORGE_MAX_USD", "1.0")
+        monkeypatch.setenv("DATAFORGE_STRICT_SPEND_CAP", "1")
+        meter = meter_from_env(provider="ollama", model="qwen2.5:7b-instruct")
+        meter.record(prompt_tokens=5000, completion_tokens=1000)
+        assert meter.calls == 1
+        assert meter.cumulative_usd == 0.0
+
+    def test_strict_spend_cap_refuses_unknown_paid_provider_with_active_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DATAFORGE_MAX_USD", "1.0")
+        monkeypatch.setenv("DATAFORGE_STRICT_SPEND_CAP", "1")
+        meter = meter_from_env(provider="mystery-paid-cloud", model="m1")
+        with pytest.raises(CostCapExceededError, match="no token price is registered"):
+            meter.record(prompt_tokens=100, completion_tokens=50)
+
+    def test_anthropic_and_ollama_provider_adapters_mocked_offline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import asyncio
+
+        import httpx
+
+        from dataforge.agent import providers
+
+        providers.reset_spend_meter()
+        monkeypatch.setenv("DATAFORGE_LLM_PROVIDER", "anthropic")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-offline")
+        monkeypatch.setenv("DATAFORGE_ANTHROPIC_MAX_USD", "0.01")
+
+        async def mock_post_anthropic(self: object, url: str, **kwargs: object) -> httpx.Response:
+            assert url.endswith("/v1/messages")
+            request = httpx.Request("POST", url)
+            return httpx.Response(
+                200,
+                json={
+                    "content": [{"type": "text", "text": "ATLANTA"}],
+                    "usage": {
+                        "input_tokens": 200,
+                        "cache_creation_input_tokens": 50,
+                        "cache_read_input_tokens": 50,
+                        "output_tokens": 100,
+                    },
+                },
+                request=request,
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", mock_post_anthropic)
+        res = asyncio.run(
+            providers.complete_with_usage(
+                [{"role": "system", "content": "sys"}, {"role": "user", "content": "hi"}],
+                model="claude-sonnet-4-6",
+            )
+        )
+        assert res.text == "ATLANTA"
+        assert res.usage.prompt_tokens == 300
+        assert res.usage.completion_tokens == 100
+        active = providers.spend_meter()
+        assert active is not None
+        # 300/1k * 0.003 + 100/1k * 0.015 = 0.0009 + 0.0015 = 0.0024
+        assert active.cumulative_usd == pytest.approx(0.0024)
+
+        # Now verify local Ollama ($0, no API key needed)
+        providers.reset_spend_meter()
+        monkeypatch.setenv("DATAFORGE_LLM_PROVIDER", "ollama")
+        monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+
+        async def mock_post_ollama(self: object, url: str, **kwargs: object) -> httpx.Response:
+            assert "11434" in url
+            request = httpx.Request("POST", url)
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [{"message": {"content": "BOSTON"}}],
+                    "usage": {"prompt_tokens": 120, "completion_tokens": 4},
+                },
+                request=request,
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", mock_post_ollama)
+        ollama_res = asyncio.run(
+            providers.complete_with_usage([{"role": "user", "content": "fix"}])
+        )
+        assert ollama_res.text == "BOSTON"
+        assert ollama_res.provider == "ollama"
+        ollama_meter = providers.spend_meter()
+        assert ollama_meter is not None
+        assert ollama_meter.cumulative_usd == 0.0

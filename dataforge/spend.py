@@ -38,6 +38,12 @@ _LEDGER_SCHEMA = "dataforge_spend_ledger_v1"
 # (DATAFORGE_AZURE_MAX_USD etc.); DATAFORGE_MAX_USD is the global default that
 # also covers the product/agent path, which had no cap at all before.
 _GLOBAL_CAP_ENV = "DATAFORGE_MAX_USD"
+_STRICT_CAP_ENV = "DATAFORGE_STRICT_SPEND_CAP"
+
+# Providers that run locally or on documented free tiers where no per-token USD bill
+# exists by default. Under DATAFORGE_STRICT_SPEND_CAP=1, any *other* provider lacking a
+# price entry fails closed when a USD cap is active rather than running unmetered.
+FREE_OR_LOCAL_PROVIDERS: frozenset[str] = frozenset({"groq", "cerebras", "ollama"})
 
 
 class CostCapExceededError(RuntimeError):
@@ -80,6 +86,7 @@ class ModelPrice:
 # missing entry means "unpriced", which disables the USD guard rather than
 # inventing a number. That preserves the previous no-op behavior exactly.
 PRICES: dict[str, ModelPrice] = {
+    "anthropic": ModelPrice(usd_per_1k_input=0.005, usd_per_1k_output=0.025),
     "azure": ModelPrice(usd_per_1k_input=0.005, usd_per_1k_output=0.015),
     "bedrock": ModelPrice(usd_per_1k_input=0.003, usd_per_1k_output=0.015),
     "grok": ModelPrice(usd_per_1k_input=0.002, usd_per_1k_output=0.006),
@@ -105,6 +112,21 @@ MODEL_PRICES: dict[tuple[str, str], ModelPrice] = {
     ("azure", "gpt-5.5"): ModelPrice(usd_per_1k_input=0.005, usd_per_1k_output=0.015),
     ("azure", "gpt-5-mini"): ModelPrice(usd_per_1k_input=0.00025, usd_per_1k_output=0.002),
     ("azure", "gpt-5-nano"): ModelPrice(usd_per_1k_input=0.00005, usd_per_1k_output=0.0004),
+    ("anthropic", "claude-opus-4-7"): ModelPrice(usd_per_1k_input=0.005, usd_per_1k_output=0.025),
+    ("anthropic", "claude-opus-4-6"): ModelPrice(usd_per_1k_input=0.005, usd_per_1k_output=0.025),
+    ("anthropic", "claude-opus-4-5"): ModelPrice(usd_per_1k_input=0.005, usd_per_1k_output=0.025),
+    ("anthropic", "claude-opus-4-8"): ModelPrice(usd_per_1k_input=0.005, usd_per_1k_output=0.025),
+    ("anthropic", "claude-opus-5"): ModelPrice(usd_per_1k_input=0.005, usd_per_1k_output=0.025),
+    ("anthropic", "claude-opus-5-5"): ModelPrice(usd_per_1k_input=0.004, usd_per_1k_output=0.020),
+    ("anthropic", "claude-sonnet-4-6"): ModelPrice(usd_per_1k_input=0.003, usd_per_1k_output=0.015),
+    ("anthropic", "claude-sonnet-4-5"): ModelPrice(usd_per_1k_input=0.003, usd_per_1k_output=0.015),
+    ("anthropic", "claude-sonnet-4"): ModelPrice(usd_per_1k_input=0.003, usd_per_1k_output=0.015),
+    ("anthropic", "claude-sonnet-5"): ModelPrice(usd_per_1k_input=0.002, usd_per_1k_output=0.010),
+    ("anthropic", "claude-sonnet-5-5"): ModelPrice(usd_per_1k_input=0.002, usd_per_1k_output=0.010),
+    ("anthropic", "claude-haiku-4-5"): ModelPrice(usd_per_1k_input=0.001, usd_per_1k_output=0.005),
+    ("anthropic", "claude-haiku-5-5"): ModelPrice(
+        usd_per_1k_input=0.0005, usd_per_1k_output=0.0025
+    ),
 }
 
 
@@ -294,12 +316,14 @@ class SpendMeter:
         price: ModelPrice | None = None,
         max_usd: float | None = None,
         fail_on_missing_usage: bool = False,
+        fail_on_unpriced_cap: bool = False,
     ) -> None:
         self._provider = provider
         self._model = model
         self._price = price
         self._max_usd = max_usd
         self._fail_on_missing_usage = fail_on_missing_usage
+        self._fail_on_unpriced_cap = fail_on_unpriced_cap
         self._lock = threading.Lock()
         self._cumulative_usd = 0.0
         self._calls = 0
@@ -356,6 +380,17 @@ class SpendMeter:
             cumulative = self._cumulative_usd
             over_cap = self._max_usd is not None and cumulative > self._max_usd
 
+        if (
+            self._fail_on_unpriced_cap
+            and self._max_usd is not None
+            and self._price is None
+            and self._provider.strip().lower() not in FREE_OR_LOCAL_PROVIDERS
+        ):
+            raise CostCapExceededError(
+                f"{self._provider} has a configured cap (${self._max_usd:.2f}) under "
+                f"{_STRICT_CAP_ENV}=1, but no token price is registered in dataforge.spend. "
+                "Refusing to run an unknown paid provider unmetered."
+            )
         if not usage_present and self._fail_on_missing_usage and self._price is not None:
             raise CostCapExceededError(
                 f"{self._provider} returned no usage payload on a metered run, so "
@@ -405,14 +440,20 @@ def meter_from_env(
     provider: str,
     model: str = "",
     fail_on_missing_usage: bool = False,
+    fail_on_unpriced_cap: bool | None = None,
 ) -> SpendMeter:
     """Build a :class:`SpendMeter` from the price table and environment caps."""
     return SpendMeter(
         provider=provider,
         model=model,
-        price=price_for(provider, model),
+        price=prices_from_env(provider, model),
         max_usd=cap_from_env(provider),
         fail_on_missing_usage=fail_on_missing_usage,
+        fail_on_unpriced_cap=(
+            fail_on_unpriced_cap
+            if fail_on_unpriced_cap is not None
+            else os.environ.get(_STRICT_CAP_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+        ),
     )
 
 

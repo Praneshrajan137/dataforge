@@ -7,6 +7,7 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Any, Final
 
 from z3 import (  # type: ignore[import-untyped]
@@ -22,6 +23,7 @@ from z3 import (  # type: ignore[import-untyped]
     Solver,
     StringSort,
     StringVal,
+    ToReal,
     sat,
     unknown,
     unsat,
@@ -55,6 +57,33 @@ Z3ValueFactory = Callable[[str], Any]
 #: for the cases scoping does not reach.
 _TIMEOUT_ENV_VAR: Final[str] = "DATAFORGE_SMT_TIMEOUT_MS"
 _DEFAULT_TIMEOUT_MS: Final[int] = 200
+_MAX_DECIMAL_EXPONENT: Final[int] = 1000
+
+
+def _parse_finite_decimal(raw: str | float | int) -> Decimal:
+    """Parse an exact finite Decimal, rejecting NaN/Infinity and extreme exponents."""
+    text = str(raw).strip()
+    if not text:
+        raise ValueError("Empty numeric literal.")
+    try:
+        parsed = Decimal(text)
+    except InvalidOperation as exc:
+        raise ValueError(f"Invalid numeric literal: {raw!r}") from exc
+    if not parsed.is_finite():
+        raise ValueError(f"Non-finite numeric literal: {raw!r}")
+    if abs(parsed.adjusted()) > _MAX_DECIMAL_EXPONENT:
+        raise ValueError(f"Numeric exponent out of supported range: {raw!r}")
+    return parsed
+
+
+def _canonical_value_key(raw: str, column_type: str) -> object:
+    """Return a type-aware equivalence key matching Z3 IntSort / RealSort / StringSort."""
+    if column_type in ENCODABLE_INT_TYPES:
+        return int(raw)
+    if column_type in ENCODABLE_FLOAT_TYPES:
+        dec = _parse_finite_decimal(raw)
+        return Decimal(0) if dec == 0 else dec.normalize()
+    return raw
 
 
 def _default_timeout_ms() -> int:
@@ -194,15 +223,43 @@ class SchemaToSMT:
         """
         candidate_row = proposed_fix.fix.row
         determinant = tuple(fd.determinant)
-        target = tuple(
-            self._post_fix_value(candidate_row, column, proposed_fix) for column in determinant
+        det_types = tuple(
+            (self._schema.column_type(col) or "str").strip().lower() for col in determinant
         )
-        rows = self._group_index.rows_for_key(self._df, determinant, target)
-        representatives: dict[str, int] = {}
+        dep_type = (self._schema.column_type(fd.dependent) or "str").strip().lower()
+        if all(dtype in {"str", "string"} for dtype in det_types):
+            target = tuple(
+                self._post_fix_value(candidate_row, column, proposed_fix) for column in determinant
+            )
+            rows = self._group_index.rows_for_key(self._df, determinant, target)
+        else:
+            target_typed = tuple(
+                _canonical_value_key(
+                    self._post_fix_value(candidate_row, col, proposed_fix),
+                    dtype,
+                )
+                for col, dtype in zip(determinant, det_types, strict=True)
+            )
+            rows = [
+                index
+                for index in range(row_count(self._df))
+                if tuple(
+                    _canonical_value_key(
+                        self._post_fix_value(index, col, proposed_fix),
+                        dtype,
+                    )
+                    for col, dtype in zip(determinant, det_types, strict=True)
+                )
+                == target_typed
+            ]
+        representatives: dict[object, int] = {}
         for index in rows:
             if index == candidate_row:
                 continue
-            value = self._post_fix_value(index, fd.dependent, proposed_fix)
+            value = _canonical_value_key(
+                self._post_fix_value(index, fd.dependent, proposed_fix),
+                dep_type,
+            )
             representatives.setdefault(value, index)
         return sorted(representatives.values())
 
@@ -215,10 +272,19 @@ class SchemaToSMT:
         candidate_row = proposed_fix.fix.row
         new_value = proposed_fix.fix.new_value
         values = self._column(column)
+        ctype = (self._schema.column_type(column) or "str").strip().lower()
+        if ctype in {"str", "string"}:
+            return [
+                index
+                for index in range(row_count(self._df))
+                if index != candidate_row and str(values[index]) == new_value
+            ]
+        target_key = _canonical_value_key(new_value, ctype)
         return [
             index
             for index in range(row_count(self._df))
-            if index != candidate_row and str(values[index]) == new_value
+            if index != candidate_row
+            and _canonical_value_key(str(values[index]), ctype) == target_key
         ]
 
     def verify_fix(self, proposed_fix: ProposedFix) -> VerificationResult:
@@ -306,7 +372,12 @@ class SchemaToSMT:
 
         if self._schema.domain_bounds_for(column):
             try:
-                float(proposed_fix.fix.new_value)
+                _parse_finite_decimal(proposed_fix.fix.new_value)
+                for bound in self._schema.domain_bounds_for(column):
+                    if bound.min_value is not None:
+                        _parse_finite_decimal(bound.min_value)
+                    if bound.max_value is not None:
+                        _parse_finite_decimal(bound.max_value)
             except (TypeError, ValueError):
                 return VerificationResult(
                     verdict=VerificationVerdict.UNKNOWN,
@@ -459,8 +530,8 @@ class SchemaToSMT:
                 name=column,
                 column_type=column_type,
                 function=Function(function_name, IntSort(), RealSort()),
-                value_factory=lambda raw: RealVal(str(float(raw))),
-                python_coercion=float,
+                value_factory=lambda raw: RealVal(str(_parse_finite_decimal(raw))),
+                python_coercion=_parse_finite_decimal,
             )
         if column_type in {"str", "string"}:
             return _ColumnEncoding(
@@ -509,27 +580,20 @@ class SchemaToSMT:
         proposed_fix: ProposedFix,
         bound: DomainBound,
     ) -> None:
-        row_expr = (
-            RealVal(str(float(proposed_fix.fix.new_value)))
-            if encoding.column_type in {"str", "string"}
-            else encoding.function(IntVal(proposed_fix.fix.row))
-        )
+        if encoding.column_type in {"str", "string"}:
+            row_expr = RealVal(str(_parse_finite_decimal(proposed_fix.fix.new_value)))
+        elif encoding.column_type in ENCODABLE_INT_TYPES:
+            row_expr = ToReal(encoding.function(IntVal(proposed_fix.fix.row)))
+        else:
+            row_expr = encoding.function(IntVal(proposed_fix.fix.row))
         if bound.min_value is not None:
             label = Bool(f"domain::{bound.column}::min::row::{proposed_fix.fix.row}")
-            threshold = (
-                RealVal(str(bound.min_value))
-                if encoding.column_type != "int"
-                else IntVal(int(bound.min_value))
-            )
+            threshold = RealVal(str(_parse_finite_decimal(bound.min_value)))
             formula = row_expr >= threshold if bound.inclusive_min else row_expr > threshold
             solver.assert_and_track(formula, label)
         if bound.max_value is not None:
             label = Bool(f"domain::{bound.column}::max::row::{proposed_fix.fix.row}")
-            threshold = (
-                RealVal(str(bound.max_value))
-                if encoding.column_type != "int"
-                else IntVal(int(bound.max_value))
-            )
+            threshold = RealVal(str(_parse_finite_decimal(bound.max_value)))
             formula = row_expr <= threshold if bound.inclusive_max else row_expr < threshold
             solver.assert_and_track(formula, label)
 
@@ -705,15 +769,40 @@ class SMTVerifier:
             return self._verify_against_inferred(df, fixes, verification_schema)
 
         working_df = copy_table(df)
+        total_rows = row_count(working_df)
+        columns = set(column_names(working_df))
+        staged_targets: dict[tuple[int, str], str] = {}
+        for proposed in fixes:
+            fix = proposed.fix
+            if fix.operation != "update":
+                return VerificationResult(
+                    verdict=VerificationVerdict.REJECT,
+                    reason="Only cell updates are supported by the verifier.",
+                )
+            if fix.row < 0 or fix.row >= total_rows:
+                return VerificationResult(
+                    verdict=VerificationVerdict.REJECT,
+                    reason=f"Row {fix.row} is out of bounds for the input file.",
+                )
+            if fix.column not in columns:
+                return VerificationResult(
+                    verdict=VerificationVerdict.REJECT,
+                    reason=f"Column '{fix.column}' does not exist in the input file.",
+                )
+            target = (fix.row, fix.column)
+            if target in staged_targets and staged_targets[target] != fix.new_value:
+                return VerificationResult(
+                    verdict=VerificationVerdict.REJECT,
+                    reason=f"Conflicting candidate updates for row {fix.row}, column '{fix.column}'.",
+                )
+            staged_targets[target] = fix.new_value
+            set_cell_value(working_df, fix.row, fix.column, fix.new_value)
+
         verifier = SchemaToSMT(schema, working_df)
         for proposed in fixes:
             result = verifier.verify_fix(proposed)
             if result.verdict != VerificationVerdict.ACCEPT:
                 return result
-            set_cell_value(
-                working_df, proposed.fix.row, proposed.fix.column, proposed.fix.new_value
-            )
-            verifier = SchemaToSMT(schema, working_df)
         return VerificationResult(
             verdict=VerificationVerdict.ACCEPT,
             reason="All proposed fixes passed the SMT verifier.",

@@ -381,6 +381,27 @@ export function verifyStatement(
   if (subject.length === 0) {
     missing.push("subject");
   }
+  if ("journal" in predicate) {
+    const journalObj = predicate.journal;
+    if (!isRecord(journalObj)) {
+      missing.push("journal");
+    } else {
+      if (
+        "txn_id" in journalObj &&
+        journalObj.txn_id !== null &&
+        typeof journalObj.txn_id !== "string"
+      ) {
+        missing.push("journal.txn_id");
+      }
+      if (
+        "head_sha256" in journalObj &&
+        journalObj.head_sha256 !== null &&
+        (typeof journalObj.head_sha256 !== "string" || !HEX64.test(journalObj.head_sha256))
+      ) {
+        missing.push("journal.head_sha256");
+      }
+    }
+  }
   checks.push(
     check(
       "schema_complete",

@@ -247,6 +247,7 @@ def build(
     """
     from dataforge import __version__
     from dataforge.attestation import build_attestation, sign_attestation
+    from dataforge.transactions.log import journal_head_sha256_for
 
     document = json.loads(receipt_path.read_text(encoding="utf-8"))
     if not isinstance(document, Mapping):
@@ -271,6 +272,12 @@ def build(
         # rested on nothing a reader could inspect.
         authority_schema = load_schema(constraints)
 
+    resolved_journal_head = journal_head
+    if resolved_journal_head is None and data is not None:
+        raw_txn_id = receipt.get("txn_id")
+        if isinstance(raw_txn_id, str) and raw_txn_id:
+            resolved_journal_head = journal_head_sha256_for(data, raw_txn_id)
+
     statement = build_attestation(
         receipt,
         tool_version=__version__,
@@ -278,7 +285,7 @@ def build(
         subject_name=subject_name,
         constraints=constraint_payload,
         authority_schema=authority_schema,
-        journal_head_sha256=journal_head,
+        journal_head_sha256=resolved_journal_head,
     )
 
     envelope: dict[str, Any] = statement

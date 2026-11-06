@@ -25,7 +25,6 @@
     "dataforge/cli/attest.py",
     "dataforge/cli/audit.py",
     "dataforge/cli/calibrate.py",
-    "dataforge/cli/quickstart.py",
     "dataforge/cli/release.py",
     "dataforge/cli/verify_apply.py",
     "dataforge/cli/watch.py",
@@ -60,10 +59,8 @@
     "dataforge/repairers/fallback.py",
     "dataforge/repairers/format_violation.py",
     "dataforge/repairers/induce.py",
-    "dataforge/repairers/llm_corrector.py",
     "dataforge/repairers/missing_value.py",
     "dataforge/review/ranker.py",
-    "dataforge/spend.py",
     "dataforge/stores/base.py",
     "dataforge/stores/cloud.py",
     "dataforge/stores/csv.py",
@@ -948,6 +945,38 @@
     ],
     "integration_tests": [
       "tests/integration/test_surface_uniformity.py"
+    ]
+  },
+  "dataforge/safety/conservation.py": {
+    "direct_tests": [
+      "tests/unit/test_conservation.py"
+    ]
+  },
+  "dataforge/gazetteer.py": {
+    "direct_tests": [
+      "tests/unit/test_gazetteer.py"
+    ]
+  },
+  "dataforge/triage_clusters.py": {
+    "direct_tests": [
+      "tests/unit/test_triage_clusters.py"
+    ]
+  },
+  "dataforge/cli/quickstart.py": {
+    "integration_tests": [
+      "tests/integration/test_quickstart.py",
+      "tests/integration/test_surface_uniformity.py"
+    ]
+  },
+  "dataforge/repairers/llm_corrector.py": {
+    "direct_tests": [
+      "tests/unit/test_corrector_structured.py",
+      "tests/unit/test_corrector_clue_delta.py"
+    ]
+  },
+  "dataforge/spend.py": {
+    "direct_tests": [
+      "tests/unit/test_spend.py"
     ]
   }
 }

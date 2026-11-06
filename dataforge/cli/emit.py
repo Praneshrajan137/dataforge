@@ -98,6 +98,7 @@ def attest_result(
     from dataforge.attestation import attest_repair
     from dataforge.cli.common import load_schema, load_schema_mapping
     from dataforge.domain.premise import premise_to_canonical
+    from dataforge.transactions.log import journal_head_sha256_for
     from dataforge.witness import witnesses_for_applied_fixes
 
     if not result.receipt.applied:
@@ -142,7 +143,7 @@ def attest_result(
         produced_at=datetime.now(UTC).isoformat(),
         constraints=constraints_mapping,
         authority_schema=effective_schema,
-        journal_head_sha256=None,
+        journal_head_sha256=journal_head_sha256_for(source_path, result.receipt.txn_id),
         data_bytes=source_path.read_bytes() if source_path.is_file() else None,
         witnesses=witnesses_for_applied_fixes(
             source_path,

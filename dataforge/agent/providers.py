@@ -137,6 +137,21 @@ def _usage_from_bedrock(data: dict[str, object]) -> Usage:
     )
 
 
+def _usage_from_anthropic(data: dict[str, object]) -> Usage:
+    """Extract conservative usage from an Anthropic Messages API response body."""
+    raw = data.get("usage")
+    if not isinstance(raw, dict):
+        return Usage(present=False)
+    input_tokens = int(raw.get("input_tokens", 0) or 0)
+    cache_create = int(raw.get("cache_creation_input_tokens", 0) or 0)
+    cache_read = int(raw.get("cache_read_input_tokens", 0) or 0)
+    output_tokens = int(raw.get("output_tokens", 0) or 0)
+    return Usage(
+        prompt_tokens=input_tokens + cache_create + cache_read,
+        completion_tokens=output_tokens,
+    )
+
+
 # The product path had no spend guard at all: `dataforge repair --agent` could
 # make unbounded billable calls. This process-wide meter closes that hole. It is
 # configured from DATAFORGE_MAX_USD (or DATAFORGE_<PROVIDER>_MAX_USD) and rebuilt
@@ -195,7 +210,19 @@ def _env_truthy(name: str) -> bool:
 
 
 _SUPPORTED_PROVIDERS = frozenset(
-    {"groq", "gemini", "bedrock", "azure", "grok", "cerebras", "openrouter", "hf", "cloudflare"}
+    {
+        "groq",
+        "gemini",
+        "bedrock",
+        "azure",
+        "anthropic",
+        "ollama",
+        "grok",
+        "cerebras",
+        "openrouter",
+        "hf",
+        "cloudflare",
+    }
 )
 
 
@@ -224,10 +251,14 @@ def get_provider_name() -> str:
         return "bedrock"
     if os.environ.get("AZURE_API_KEY"):
         return "azure"
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic"
     if os.environ.get("XAI_API_KEY"):
         return "grok"
     if os.environ.get("CEREBRAS_API_KEY"):
         return "cerebras"
+    if os.environ.get("DATAFORGE_OLLAMA_BASE_URL") or os.environ.get("DATAFORGE_OLLAMA_MODEL"):
+        return "ollama"
     return "groq"
 
 
@@ -238,6 +269,8 @@ _PROVIDER_MODEL_ENV = {
     "gemini": "DATAFORGE_GEMINI_MODEL",
     "bedrock": "DATAFORGE_BEDROCK_MODEL",
     "azure": "DATAFORGE_AZURE_MODEL",
+    "anthropic": "DATAFORGE_ANTHROPIC_MODEL",
+    "ollama": "DATAFORGE_OLLAMA_MODEL",
     "grok": "DATAFORGE_GROK_MODEL",
     "cerebras": "DATAFORGE_CEREBRAS_MODEL",
 }
@@ -266,6 +299,10 @@ def resolve_model(provider: str | None = None) -> str:
         return _OPENAI_COMPAT_CONFIG[name].default_model
     if name == "gemini":
         return _GEMINI_DEFAULT_MODEL
+    if name == "anthropic":
+        return _ANTHROPIC_DEFAULT_MODEL
+    if name == "ollama":
+        return _OLLAMA_DEFAULT_MODEL
     if name in ("bedrock", "azure"):
         # No built-in default: the Bedrock model ID / Azure deployment name is
         # account-specific and must be provided by the user.
@@ -357,10 +394,23 @@ async def complete_with_usage(
             temperature=temperature,
             response_format=response_format,
         )
+    elif provider == "anthropic":
+        result = await _complete_anthropic(
+            messages,
+            model=model,
+            temperature=temperature,
+        )
+    elif provider == "ollama":
+        result = await _complete_ollama(
+            messages,
+            model=model,
+            temperature=temperature,
+            response_format=response_format,
+        )
     elif provider in _SUPPORTED_PROVIDERS:
         raise NotImplementedError(
             f"Provider '{provider}' is planned but not yet implemented. "
-            f"Use 'groq', 'grok', 'cerebras', 'gemini', 'bedrock', or 'azure'."
+            "Use 'groq', 'grok', 'cerebras', 'gemini', 'bedrock', 'azure', 'anthropic', or 'ollama'."
         )
     else:
         raise NotImplementedError(
@@ -826,5 +876,146 @@ async def _complete_azure(
         text=text,
         usage=_usage_from_openai(data),
         provider="azure",
+        model=model_name,
+    )
+
+
+# ── Anthropic Messages API provider ──────────────────────────────────────
+
+_ANTHROPIC_DEFAULT_URL = "https://api.anthropic.com/v1/messages"
+_ANTHROPIC_API_VERSION = "2023-06-01"
+_ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-4-6"
+_ANTHROPIC_DEFAULT_MAX_TOKENS = 1024
+
+
+def _anthropic_max_tokens() -> int:
+    raw = os.environ.get("DATAFORGE_ANTHROPIC_MAX_TOKENS", "").strip()
+    if not raw:
+        return _ANTHROPIC_DEFAULT_MAX_TOKENS
+    try:
+        value = int(raw)
+    except ValueError:
+        return _ANTHROPIC_DEFAULT_MAX_TOKENS
+    return value if value > 0 else _ANTHROPIC_DEFAULT_MAX_TOKENS
+
+
+@retry(
+    retry=retry_if_exception(_is_retryable),
+    wait=wait_exponential(multiplier=1, min=1, max=30),
+    stop=stop_after_attempt(3),
+    reraise=True,
+)
+async def _complete_anthropic(
+    messages: list[Message],
+    *,
+    model: str | None = None,
+    temperature: float = 0.0,
+) -> Completion:
+    """Call Anthropic's native Messages API with full token metering."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        raise ProviderError("anthropic", "ANTHROPIC_API_KEY environment variable not set")
+
+    model_name = model or resolve_model("anthropic")
+    url = os.environ.get("ANTHROPIC_BASE_URL", "").strip() or _ANTHROPIC_DEFAULT_URL
+    if not url.endswith("/messages"):
+        url = f"{url.rstrip('/')}/v1/messages" if not url.endswith("/v1") else f"{url}/messages"
+
+    system_parts: list[str] = []
+    chat_messages: list[dict[str, str]] = []
+    for msg in messages:
+        if msg["role"] == "system":
+            system_parts.append(msg["content"])
+        else:
+            chat_messages.append({"role": msg["role"], "content": msg["content"]})
+
+    payload: dict[str, object] = {
+        "model": model_name,
+        "max_tokens": _anthropic_max_tokens(),
+        "temperature": temperature,
+        "messages": chat_messages,
+    }
+    if system_parts:
+        payload["system"] = "\n\n".join(system_parts)
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(
+            url,
+            json=payload,
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": _ANTHROPIC_API_VERSION,
+                "content-type": "application/json",
+            },
+        )
+        response.raise_for_status()
+
+    data = response.json()
+    blocks = data.get("content")
+    if not isinstance(blocks, list) or not blocks:
+        raise ProviderError("anthropic", f"Unexpected response format: {data}")
+    texts = [
+        str(block.get("text", ""))
+        for block in blocks
+        if isinstance(block, dict) and block.get("type") == "text"
+    ]
+    if not texts:
+        raise ProviderError("anthropic", f"No text block in response: {data}")
+    return Completion(
+        text="".join(texts),
+        usage=_usage_from_anthropic(data),
+        provider="anthropic",
+        model=model_name,
+    )
+
+
+# ── Local Ollama OpenAI-compatible provider ($0 unpriced local tier) ─────
+
+_OLLAMA_DEFAULT_URL = "http://localhost:11434/v1/chat/completions"
+_OLLAMA_DEFAULT_MODEL = "qwen2.5:7b-instruct"
+
+
+@retry(
+    retry=retry_if_exception(_is_retryable),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    stop=stop_after_attempt(2),
+    reraise=True,
+)
+async def _complete_ollama(
+    messages: list[Message],
+    *,
+    model: str | None = None,
+    temperature: float = 0.0,
+    response_format: dict[str, object] | None = None,
+) -> Completion:
+    """Call a local Ollama OpenAI-compatible endpoint with zero API key requirement."""
+    url = os.environ.get("DATAFORGE_OLLAMA_BASE_URL", "").strip() or _OLLAMA_DEFAULT_URL
+    model_name = model or resolve_model("ollama")
+    payload: dict[str, object] = {
+        "model": model_name,
+        "messages": [dict(m) for m in messages],
+        "temperature": temperature,
+    }
+    if response_format is not None:
+        payload["response_format"] = response_format
+
+    headers = {"Content-Type": "application/json"}
+    api_key = os.environ.get("OLLAMA_API_KEY", "").strip()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+
+    data = response.json()
+    try:
+        text = str(data["choices"][0]["message"]["content"])
+    except (KeyError, IndexError) as exc:
+        raise ProviderError("ollama", f"Unexpected response format: {data}") from exc
+    return Completion(
+        text=text,
+        usage=_usage_from_openai(data),
+        provider="ollama",
         model=model_name,
     )

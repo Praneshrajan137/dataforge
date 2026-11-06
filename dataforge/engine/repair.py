@@ -2260,6 +2260,7 @@ def verify_and_apply(request: VerifyAndApplyRequest) -> RepairPipelineResult:
     safety_denied: list[ProposedFix] = []
     safety_escalated: list[ProposedFix] = []
     verifier_rejected: list[ProposedFix] = []
+    proof_obligations: list[ProofObligation] = []
     seen_cells: set[tuple[int, str]] = set()
     noop_count = 0
 
@@ -2304,9 +2305,64 @@ def verify_and_apply(request: VerifyAndApplyRequest) -> RepairPipelineResult:
         )
         if verifier_result.verdict != VerificationVerdict.ACCEPT:
             verifier_rejected.append(preferred)
+            proof_obligations.append(
+                ProofObligation(
+                    obligation_id=f"row_{preferred.fix.row}_{preferred.fix.column}",
+                    verifier="smt",
+                    status=(
+                        "rejected"
+                        if verifier_result.verdict == VerificationVerdict.REJECT
+                        else "unknown"
+                    ),
+                    reason=verifier_result.reason,
+                    unsat_core=tuple(verifier_result.unsat_core),
+                )
+            )
             continue
         verified.append(preferred)
         set_cell_value(working_df, preferred.fix.row, preferred.fix.column, preferred.fix.new_value)
+
+    if len(verifier_rejected) >= 2:
+        # Coupled multi-row repairs (for example when every row in an FD determinant
+        # group is dirty and simultaneously repaired to the same authoritative value)
+        # fail single-row sequential verification because peer rows have not been
+        # staged yet, while passing joint post-batch N-version verification.
+        coupled_groups: dict[tuple[str, str], list[ProposedFix]] = {}
+        for item in verifier_rejected:
+            coupled_groups.setdefault((item.fix.column, item.fix.new_value), []).append(item)
+        promoted_cells: set[tuple[int, str]] = set()
+        for group in coupled_groups.values():
+            if len(group) < 2:
+                continue
+            if effective_schema is not None and request.require_independent_agreement:
+                batch_verdict = differential_verify(working_df, group, effective_schema).verdict
+            else:
+                guard = (
+                    verification_schema
+                    if (
+                        effective_schema is None
+                        and any(f.provenance != "deterministic" for f in group)
+                    )
+                    else None
+                )
+                batch_verdict = verifier.verify(
+                    working_df, group, effective_schema, verification_schema=guard
+                ).verdict
+            if batch_verdict == VerificationVerdict.ACCEPT:
+                for item in group:
+                    verified.append(item)
+                    set_cell_value(working_df, item.fix.row, item.fix.column, item.fix.new_value)
+                    promoted_cells.add((item.fix.row, item.fix.column))
+        if promoted_cells:
+            verifier_rejected = [
+                item
+                for item in verifier_rejected
+                if (item.fix.row, item.fix.column) not in promoted_cells
+            ]
+            promoted_ids = {f"row_{r}_{c}" for r, c in promoted_cells}
+            proof_obligations = [
+                ob for ob in proof_obligations if ob.obligation_id not in promoted_ids
+            ]
 
     # Untrusted-partition: external fixes are proven (auto-apply) only under an
     # authoritative schema; otherwise held unless the explicit opt-in is set.
@@ -2443,6 +2499,7 @@ def verify_and_apply(request: VerifyAndApplyRequest) -> RepairPipelineResult:
         candidate_provenance=sorted({fix.provenance for fix in auto}),
         suggested_fixes=suggestion_candidates,
         applied_fixes=verified_fixes if applied else [],
+        proof_obligations=proof_obligations,
         accepted_constraint_ids=accepted_constraint_ids,
         revert_command=f"dataforge revert {txn_id}" if txn_id is not None else None,
         limitations=(

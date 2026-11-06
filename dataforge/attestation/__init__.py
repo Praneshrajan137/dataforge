@@ -863,6 +863,17 @@ def _check_schema(
     if not isinstance(subject, Sequence) or not subject:
         missing.append("subject")
 
+    journal = predicate.get("journal")
+    if isinstance(journal, Mapping):
+        txn_id = journal.get("txn_id")
+        if txn_id is not None and not isinstance(txn_id, str):
+            missing.append("journal.txn_id")
+        head_sha256 = journal.get("head_sha256")
+        if head_sha256 is not None and not _is_hex64(head_sha256):
+            missing.append("journal.head_sha256")
+    elif "journal" in predicate:
+        missing.append("journal")
+
     return [
         AttestationCheck(
             "schema_complete",

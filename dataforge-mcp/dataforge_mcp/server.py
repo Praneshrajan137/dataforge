@@ -6,6 +6,7 @@ import argparse
 from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from dataforge_mcp.tools import (
     configure_mcp_security,
@@ -22,27 +23,100 @@ from dataforge_mcp.tools import (
 TransportLiteral = Literal["stdio", "streamable-http"]
 
 
+_READ_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
+_REVERSIBLE_WRITE_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=False,
+    destructiveHint=False,
+    idempotentHint=False,
+    openWorldHint=False,
+)
+
+
 def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
     """Create a FastMCP server with all DataForge tools registered."""
     mcp = FastMCP(
         "DataForge",
         instructions=(
-            "DataForge profiles CSVs, detects data-quality issues, proposes "
-            "verified repairs, applies reversible transactions, and reverts them."
+            "DataForge is a neuro-symbolic tabular verification and repair guardrail. "
+            "Use read-only tools (profile, detect_errors, review_rank, verify_fix) to inspect "
+            "and dry-check candidate edits, and reversible transaction tools "
+            "(verify_and_apply, apply_repairs, agent_repair, revert) to commit proven repairs "
+            "with offline-verifiable in-toto/DSSE attestations."
         ),
         host=host,
         port=port,
         stateless_http=True,
         json_response=True,
     )
-    mcp.tool(name="dataforge_profile")(dataforge_profile)
-    mcp.tool(name="dataforge_detect_errors")(dataforge_detect_errors)
-    mcp.tool(name="dataforge_verify_fix")(dataforge_verify_fix)
-    mcp.tool(name="dataforge_review_rank")(dataforge_review_rank)
-    mcp.tool(name="dataforge_apply_repairs")(dataforge_apply_repairs)
-    mcp.tool(name="dataforge_verify_and_apply")(dataforge_verify_and_apply)
-    mcp.tool(name="dataforge_agent_repair")(dataforge_agent_repair)
-    mcp.tool(name="dataforge_revert")(dataforge_revert)
+    mcp.tool(
+        name="dataforge_profile",
+        description=(
+            "Read-only table overview: row/column shape, issue counts by type, and optional "
+            "paged or disk-staged (.dataforge/staging/) issue lists."
+        ),
+        annotations=_READ_ANNOTATIONS,
+    )(dataforge_profile)
+    mcp.tool(
+        name="dataforge_detect_errors",
+        description=(
+            "Read-only issue scan: return detected tabular anomalies with optional "
+            "limit/offset pagination."
+        ),
+        annotations=_READ_ANNOTATIONS,
+    )(dataforge_detect_errors)
+    mcp.tool(
+        name="dataforge_verify_fix",
+        description=(
+            "Read-only single-cell dry check: run SafetyFilter and N-version (Z3 + Direct) "
+            "verification on one proposed fix without mutating disk."
+        ),
+        annotations=_READ_ANNOTATIONS,
+    )(dataforge_verify_fix)
+    mcp.tool(
+        name="dataforge_review_rank",
+        description=(
+            "Read-only triage queue ordering: rank detected cells highest-error-likelihood "
+            "first without proposing or writing repair values."
+        ),
+        annotations=_READ_ANNOTATIONS,
+    )(dataforge_review_rank)
+    mcp.tool(
+        name="dataforge_apply_repairs",
+        description=(
+            "Run DataForge's deterministic repair pipeline (dry_run or reversible journaled "
+            "apply) under an optional authoritative schema, emitting an in-toto attestation."
+        ),
+        annotations=_REVERSIBLE_WRITE_ANNOTATIONS,
+    )(dataforge_apply_repairs)
+    mcp.tool(
+        name="dataforge_verify_and_apply",
+        description=(
+            "External agent guardrail: verify caller-supplied cell edits and journal-commit "
+            "only schema-proven fixes with an offline-verifiable DSSE attestation."
+        ),
+        annotations=_REVERSIBLE_WRITE_ANNOTATIONS,
+    )(dataforge_verify_and_apply)
+    mcp.tool(
+        name="dataforge_agent_repair",
+        description=(
+            "Autonomous multi-step repair: apply the deterministic floor then run a bounded "
+            "residual agent policy under verified reversible transactions and attestation."
+        ),
+        annotations=_REVERSIBLE_WRITE_ANNOTATIONS,
+    )(dataforge_agent_repair)
+    mcp.tool(
+        name="dataforge_revert",
+        description=(
+            "Byte-identical rollback: verify the append-only hash-chain journal and restore "
+            "a CSV to its exact pre-transaction bytes by txn_id."
+        ),
+        annotations=_REVERSIBLE_WRITE_ANNOTATIONS,
+    )(dataforge_revert)
     return mcp
 
 

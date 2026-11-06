@@ -17,8 +17,11 @@ __all__ = [
     "P_FALSE_POS",
     "P_INVALID",
     "P_LATE_STEP",
+    "P_LAZY_ABSTAIN",
     "P_REINSPECT",
     "P_WRONG_FIX",
+    "P_WRONG_FIX_CALIBRATED",
+    "R_ABSTAIN_CALIBRATED",
     "R_DIAGNOSE",
     "R_EXPLORE",
     "R_FIX",
@@ -27,6 +30,7 @@ __all__ = [
     "R_ROOT_CAUSE",
     "R_TYPE_BONUS",
     "SPAM_THRESHOLD",
+    "WRONG_FIX_TERMINAL_PENALTY_RATE",
     "EpisodeMetrics",
     "RewardEngine",
 ]
@@ -54,6 +58,16 @@ FIX_WEIGHT: float = 0.60
 FALSE_POS_PENALTY_RATE: float = 0.05
 SPAM_THRESHOLD: float = 2.0
 
+# Strict RLVR anti-reward-hacking calibration constants (opt-in via strict_calibration=True):
+# Under legacy P_WRONG_FIX=-0.08 vs R_FIX+R_JUSTIFY_BONUS=+0.20, random guessing with >29%
+# accuracy had positive expected reward. Setting P_WRONG_FIX_CALIBRATED=-0.60 against
+# R_ABSTAIN_CALIBRATED=+0.03 makes guessing strictly negative-EV below 78.75% precision,
+# while P_LAZY_ABSTAIN=-0.08 penalizes abstaining on deterministically provable errors.
+P_WRONG_FIX_CALIBRATED: float = -0.60
+R_ABSTAIN_CALIBRATED: float = 0.03
+P_LAZY_ABSTAIN: float = -0.08
+WRONG_FIX_TERMINAL_PENALTY_RATE: float = 0.25
+
 
 @dataclass
 class EpisodeMetrics:
@@ -64,6 +78,8 @@ class EpisodeMetrics:
     fixed_issues: int = 0
     fixable_issues: int = 0
     false_positives: int = 0
+    wrong_fixes: int = 0
+    honest_abstentions: int = 0
 
     @property
     def total_diagnoses(self) -> int:
@@ -73,6 +89,19 @@ class EpisodeMetrics:
 
 class RewardEngine:
     """Computes dense per-step and terminal rewards."""
+
+    def __init__(self, *, strict_calibration: bool = False) -> None:
+        self.strict_calibration = strict_calibration
+
+    def wrong_fix_penalty(self) -> float:
+        """Return step penalty for writing an incorrect value."""
+        return P_WRONG_FIX_CALIBRATED if self.strict_calibration else P_WRONG_FIX
+
+    def abstain_reward(self, *, is_provable: bool) -> float:
+        """Score an explicit ABSTAIN action without incentivizing lazy abstention."""
+        if not self.strict_calibration:
+            return 0.0
+        return P_LAZY_ABSTAIN if is_provable else R_ABSTAIN_CALIBRATED
 
     def compute_terminal_score(self, metrics: EpisodeMetrics) -> float:
         """Compute terminal score per REWARD_DESIGN.md formula."""
@@ -89,6 +118,8 @@ class RewardEngine:
         ):
             fp_rate *= 2.0
         penalty = metrics.false_positives * fp_rate
+        if self.strict_calibration:
+            penalty += metrics.wrong_fixes * WRONG_FIX_TERMINAL_PENALTY_RATE
         raw = detection_rate * DETECTION_WEIGHT + fix_rate * FIX_WEIGHT - penalty
         return round(max(0.0, min(1.0, raw)), 4)
 

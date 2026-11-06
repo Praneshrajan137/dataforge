@@ -199,6 +199,21 @@ class MachineOutcome:
         }
 
 
+def _escalation_actions(
+    required_confirm_flags: frozenset[str],
+    held_count: int,
+) -> tuple[NextAction, ...]:
+    """Derive machine next-actions from constitutional confirmation flags and batch size."""
+    actions: list[NextAction] = []
+    if required_confirm_flags:
+        actions.append("needs_confirm_escalations")
+    if held_count > 1:
+        actions.append("retry_smaller_batch")
+    if not actions:
+        actions.append("needs_review")
+    return tuple(actions)
+
+
 def _next_actions_for_escalation(
     disposition: BatchDisposition,
 ) -> tuple[NextAction, ...]:
@@ -219,14 +234,7 @@ def _next_actions_for_escalation(
     condition is now "the constitution named a flag that would clear this", whatever that
     flag is called.
     """
-    actions: list[NextAction] = []
-    if disposition.required_confirm_flags:
-        actions.append("needs_confirm_escalations")
-    if len(disposition.held) > 1:
-        actions.append("retry_smaller_batch")
-    if not actions:
-        actions.append("needs_review")
-    return tuple(actions)
+    return _escalation_actions(disposition.required_confirm_flags, len(disposition.held))
 
 
 def outcome_for_batch(
@@ -322,14 +330,7 @@ def outcome_for_run(
         actions = ("none",)
     elif held_count > 0 and safety_verdict in ("escalate", "deny"):
         code = "batch_safety_denied" if safety_verdict == "deny" else "batch_safety_escalated"
-        action_list: list[NextAction] = []
-        if "confirm_escalations" in required_confirm_flags:
-            action_list.append("needs_confirm_escalations")
-        if held_count > 1:
-            action_list.append("retry_smaller_batch")
-        if not action_list:
-            action_list.append("needs_review")
-        actions = tuple(action_list)
+        actions = _escalation_actions(required_confirm_flags, held_count)
     elif held_count > 0:
         code = "all_fixes_held"
         actions = ("needs_review",)

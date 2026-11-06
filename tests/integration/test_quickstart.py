@@ -72,4 +72,38 @@ class TestQuickstart:
 
     def test_quickstart_is_listed_in_help(self) -> None:
         result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
         assert "quickstart" in result.output
+
+    def test_quickstart_disaster_demo_intercepts_corruptions_and_reverts_bytes(self) -> None:
+        """Zero-key disaster demo intercepts 3 rogue edits, applies 1 proven fix, and reverts."""
+        result = runner.invoke(app, ["quickstart", "--disaster-demo"])
+        assert result.exit_code == 0, result.output
+        assert "DataForge Disaster Demo (Zero API Keys)" in result.output
+        assert "Attestation verified: True" in result.output
+        assert "Byte-identical revert: True" in result.output
+
+    def test_quickstart_disaster_demo_json_contract(self) -> None:
+        """Machine-readable --disaster-demo --json proves 0 corruptions written and exact revert."""
+        import json
+
+        result = runner.invoke(app, ["quickstart", "--disaster-demo", "--json"])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["schema_version"] == "disaster_demo_v1"
+        assert payload["zero_api_keys_required"] is True
+        assert payload["submitted_edits"] == 4
+        assert payload["applied_proven_fixes"] == 1
+        assert payload["intercepted_corruptions"] == 3
+        assert payload["attestation_verified"] is True
+        assert len(payload["journal_head_sha256"]) == 64
+        assert payload["source_sha256"] != payload["post_apply_sha256"]
+        assert payload["reverted_sha256"] == payload["source_sha256"]
+        assert payload["byte_identical_revert"] is True
+        reasons = {item["review_reason"] for item in payload["intercepted_details"]}
+        assert "verifier_rejected" in reasons
+        assert "stale_precondition" in reasons
+        unsat_non_empty = [
+            item["unsat_core"] for item in payload["intercepted_details"] if item["unsat_core"]
+        ]
+        assert len(unsat_non_empty) >= 2

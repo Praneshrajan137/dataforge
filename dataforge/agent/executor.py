@@ -33,6 +33,7 @@ from typing import Any, Literal, cast
 
 from dataforge.agent.scratchpad import Scratchpad
 from dataforge.agent.tool_actions import (
+    Abstain,
     Action,
     Diagnose,
     Fix,
@@ -57,6 +58,7 @@ from dataforge.table import (
 )
 from dataforge.transactions.txn import CellFix
 from dataforge.verifier import SMTVerifier, VerificationVerdict
+from dataforge.verifier.differential import differential_verify
 
 __all__ = ["ActionOutcome", "VerifiedActionExecutor"]
 
@@ -184,6 +186,13 @@ class VerifiedActionExecutor:
             return self._handle_diagnose(action)
         if isinstance(action, RootCause):
             return self._handle_root_cause(action)
+        if isinstance(action, Abstain):
+            return ActionOutcome(
+                "ABSTAIN",
+                f"ABSTAIN recorded for row {action.row}, column {action.column!r}: {action.reason}",
+                accepted=False,
+                resolved_cell=(action.row, action.column),
+            )
         return ActionOutcome(
             action_type=getattr(action, "action_type", "UNKNOWN"),
             feedback="Unsupported action type.",
@@ -245,12 +254,16 @@ class VerifiedActionExecutor:
                 rejection_reason=safety_result.reason,
             )
 
-        verifier_result = self._verifier.verify(
-            self._df,
-            [proposed],
-            self._schema,
-            verification_schema=self._verification_schema(),
-        )
+        verifier_result: Any
+        if self._schema is not None:
+            verifier_result = differential_verify(self._df, [proposed], self._schema)
+        else:
+            verifier_result = self._verifier.verify(
+                self._df,
+                [proposed],
+                None,
+                verification_schema=self._verification_schema(),
+            )
         if verifier_result.verdict == VerificationVerdict.ACCEPT:
             set_cell_value(self._df, action.row, action.column, action.new_value)
             self._staged.append(proposed)

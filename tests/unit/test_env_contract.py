@@ -28,6 +28,7 @@ _TEMPLATE = Path(__file__).resolve().parents[2] / ".env.example"
 # Credential variable per implemented provider. Kept explicit because the
 # provider modules read these directly rather than from a shared table.
 _CREDENTIAL_ENV = {
+    "anthropic": "ANTHROPIC_API_KEY",
     "azure": "AZURE_API_KEY",
     "bedrock": "AWS_BEARER_TOKEN_BEDROCK",
     "gemini": "GEMINI_API_KEY",

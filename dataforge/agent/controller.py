@@ -39,6 +39,7 @@ column exists). See DECISIONS.md 2026-08-09 and
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -186,6 +187,11 @@ class AgentRepairResult(BaseModel):
         )
         provenance = sorted({fix.provenance for fix in self.fixes})
         verifier_verdict = "accept" if (self.applied and self.fixes) else "not_run"
+        independent_verification: Literal["agreed", "not_run"] = (
+            "agreed"
+            if (self.applied and self.fixes and self.authoritative_schema_present)
+            else "not_run"
+        )
         return RepairReceipt(
             mode=self.mode,
             applied=self.applied,
@@ -194,14 +200,17 @@ class AgentRepairResult(BaseModel):
             source_sha256=self.source_sha256,
             post_sha256=self.post_sha256,
             txn_id=self.txn_id,
+            authoritative_columns=list(self.covered_columns),
             safety_verdict=self.safety_verdict,
             verifier_verdict=verifier_verdict,
+            independent_verification=independent_verification,
             candidate_provenance=provenance,
             applied_fixes=applied_fixes,
             revert_command=self.revert_command,
             issues_count=self.issues_count,
             fixes_count=self.fixes_count,
             reason=self.reason,
+            machine_outcome=self.machine_outcome,
         )
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -27,6 +29,9 @@ from dataforge import (
     VerificationVerdict,
     VerifiedFix,
     VerifyAndApplyRequest,
+    differential_verify,
+    infer_verification_schema,
+    journal_head_sha256_for,
     load_schema,
     read_csv,
     revert_transaction,
@@ -88,6 +93,10 @@ class ProfileResult(BaseModel):
     columns: int
     column_names: list[str]
     total_issues: int
+    returned_issues: int = 0
+    truncated: bool = False
+    issue_type_counts: dict[str, int] = Field(default_factory=dict)
+    staging_path: str | None = None
     issues: list[IssueResult]
 
 
@@ -128,12 +137,39 @@ class TxnReceipt(BaseModel):
     fixes_count: int
     reason: str
     fixes: list[FixResult]
+    machine_outcome: dict[str, Any] | None = None
+    compact_digest: str = ""
     #: The portable in-toto/DSSE attestation over this repair, when one could be built.
     #: A third party verifies it offline -- no network, no solver, no schema -- which is the
     #: property that makes it worth returning to an agent at all. Present only for an applied
     #: repair; ``attestation_unavailable`` carries the reason otherwise.
     attestation: dict[str, Any] | None = None
     attestation_unavailable: str | None = None
+
+
+def _compact_digest(
+    *,
+    tool: str,
+    path: Path,
+    applied: bool,
+    fixes_count: int,
+    held_count: int,
+    issues_count: int,
+    txn_id: str | None,
+    machine_outcome: dict[str, Any] | None,
+    attested: bool,
+) -> str:
+    """Build a sub-150-token structured handoff digest for parent orchestrators."""
+    outcome_code = (
+        str(machine_outcome.get("outcome_code"))
+        if isinstance(machine_outcome, dict) and machine_outcome.get("outcome_code")
+        else "unknown"
+    )
+    return (
+        f"[{tool}] file={path.name} applied={applied} fixes={fixes_count} "
+        f"held={held_count} issues={issues_count} outcome={outcome_code} "
+        f"txn={txn_id or 'none'} attested={attested}"
+    )
 
 
 def _attestation_fields(
@@ -191,6 +227,10 @@ def _attestation_fields(
         schema = load_schema(resolved_schema)
     receipt_payload = receipt.model_dump(mode="json")
     applied_fixes = receipt_payload.get("applied_fixes") or []
+    txn_id = receipt_payload.get("txn_id")
+    journal_head = (
+        journal_head_sha256_for(source_path, txn_id) if isinstance(txn_id, str) and txn_id else None
+    )
     emission = attest_repair(
         receipt_payload,
         subject_name=source_path.name,
@@ -198,7 +238,7 @@ def _attestation_fields(
         produced_at=datetime.now(UTC).isoformat(),
         constraints=constraints,
         authority_schema=schema,
-        journal_head_sha256=None,
+        journal_head_sha256=journal_head,
         data_bytes=source_path.read_bytes() if source_path.is_file() else None,
         witnesses=witnesses_for_applied_fixes(source_path, applied_fixes, schema),
     )
@@ -353,39 +393,97 @@ def _proposed_fix_from_spec(fix_spec: dict[str, Any]) -> tuple[Path, Schema | No
             for key, value in fix_spec.items()
             if key in {"row", "column", "old_value", "new_value", "detector_id", "operation"}
         }
+    else:
+        raw_fix = dict(raw_fix)
+    raw_fix.setdefault("detector_id", "external")
     cell_fix = CellFix.model_validate(raw_fix)
     proposed = ProposedFix(
         fix=cell_fix,
         reason=str(fix_spec.get("reason", "MCP-provided candidate fix.")),
         confidence=float(fix_spec.get("confidence", 1.0)),
-        provenance=fix_spec.get("provenance", "deterministic"),
+        provenance=fix_spec.get("provenance", "external"),
     )
     return path, schema, proposed
 
 
-def dataforge_profile(path: str) -> ProfileResult:
-    """Profile a CSV file and return detected DataForge issues."""
+def dataforge_profile(
+    path: str,
+    limit: int | None = None,
+    offset: int = 0,
+    summary_only: bool = False,
+    stage_to_disk: bool = False,
+) -> ProfileResult:
+    """Profile CSV shape, issue counts by type, and optionally paged or disk-staged issues."""
     csv_path = _resolve_csv_path(path)
     df, issues = _run_detection(csv_path)
+    all_results = [_issue_to_result(issue) for issue in issues]
+    counts: dict[str, int] = {}
+    for item in all_results:
+        counts[item.issue_type] = counts.get(item.issue_type, 0) + 1
+
+    staging_path: str | None = None
+    if stage_to_disk:
+        payload_text = json.dumps(
+            {
+                "path": str(csv_path),
+                "rows": len(df.index),
+                "columns": len(df.columns),
+                "total_issues": len(all_results),
+                "issue_type_counts": counts,
+                "issues": [item.model_dump(mode="json") for item in all_results],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        digest12 = hashlib.sha256(payload_text.encode("utf-8")).hexdigest()[:12]
+        staging_dir = csv_path.parent / ".dataforge" / "staging"
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        staged_file = staging_dir / f"profile_{csv_path.stem}_{digest12}.json"
+        staged_file.write_text(payload_text, encoding="utf-8")
+        staging_path = str(staged_file)
+
+    start = max(0, offset)
+    if summary_only:
+        page: list[IssueResult] = []
+        truncated = len(all_results) > 0
+    elif limit is not None:
+        page = all_results[start : start + max(0, limit)]
+        truncated = (start + len(page)) < len(all_results)
+    else:
+        page = all_results[start:]
+        truncated = start > 0 and len(all_results) > 0
+
     return ProfileResult(
         path=str(csv_path),
         rows=len(df.index),
         columns=len(df.columns),
         column_names=[str(column) for column in df.columns],
-        total_issues=len(issues),
-        issues=[_issue_to_result(issue) for issue in issues],
+        total_issues=len(all_results),
+        returned_issues=len(page),
+        truncated=truncated,
+        issue_type_counts=counts,
+        staging_path=staging_path,
+        issues=page,
     )
 
 
-def dataforge_detect_errors(path: str) -> list[IssueResult]:
-    """Detect data-quality errors in a CSV file."""
+def dataforge_detect_errors(
+    path: str,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[IssueResult]:
+    """Detect data-quality errors in a CSV file with optional pagination."""
     csv_path = _resolve_csv_path(path)
     _df, issues = _run_detection(csv_path)
-    return [_issue_to_result(issue) for issue in issues]
+    all_results = [_issue_to_result(issue) for issue in issues]
+    start = max(0, offset)
+    if limit is not None:
+        return all_results[start : start + max(0, limit)]
+    return all_results[start:]
 
 
 def dataforge_verify_fix(fix_spec: dict[str, Any]) -> VerifyFixResult:
-    """Verify whether one candidate fix may be accepted by DataForge gates."""
+    """Dry-check one candidate cell fix via SafetyFilter and N-version differential verification."""
     path, schema, proposed = _proposed_fix_from_spec(fix_spec)
     df = read_csv(path)
     fix = proposed.fix
@@ -403,7 +501,10 @@ def dataforge_verify_fix(fix_spec: dict[str, Any]) -> VerifyFixResult:
             ),
         )
 
-    safety_result = SafetyFilter().evaluate(proposed, schema, SafetyContext())
+    confirm = bool(fix_spec.get("confirm", False))
+    safety_result = SafetyFilter().evaluate(
+        proposed, schema, SafetyContext(confirm_escalations=confirm)
+    )
     if safety_result.verdict != SafetyVerdict.ALLOW:
         return VerifyFixResult(
             accept=False,
@@ -411,7 +512,15 @@ def dataforge_verify_fix(fix_spec: dict[str, Any]) -> VerifyFixResult:
             safety_verdict=safety_result.verdict.value,
         )
 
-    verifier_result = SMTVerifier().verify(df, [proposed], schema)
+    if schema is not None:
+        verifier_result: Any = differential_verify(df, [proposed], schema)
+    else:
+        verifier_result = SMTVerifier().verify(
+            df,
+            [proposed],
+            None,
+            verification_schema=infer_verification_schema(df),
+        )
     return VerifyFixResult(
         accept=verifier_result.verdict == VerificationVerdict.ACCEPT,
         reason=verifier_result.reason,
@@ -499,6 +608,10 @@ def dataforge_apply_repairs(
         )
     )
     receipt = result.receipt
+    attest_fields = _attestation_fields(
+        receipt, source_path=csv_path, applied=receipt.applied, schema_path=schema_path
+    )
+    machine_outcome = dict(receipt.machine_outcome) if receipt.machine_outcome else None
     return TxnReceipt(
         path=str(csv_path),
         mode=mode,
@@ -521,9 +634,19 @@ def dataforge_apply_repairs(
         fixes_count=receipt.fixes_count,
         reason=receipt.reason,
         fixes=[_verified_fix_to_result(fix) for fix in result.fixes],
-        **_attestation_fields(
-            receipt, source_path=csv_path, applied=receipt.applied, schema_path=schema_path
+        machine_outcome=machine_outcome,
+        compact_digest=_compact_digest(
+            tool="dataforge_apply_repairs",
+            path=csv_path,
+            applied=receipt.applied,
+            fixes_count=receipt.fixes_count,
+            held_count=len(receipt.suggested_fixes),
+            issues_count=receipt.issues_count,
+            txn_id=receipt.txn_id,
+            machine_outcome=machine_outcome,
+            attested=attest_fields.get("attestation") is not None,
         ),
+        **attest_fields,
     )
 
 
@@ -537,6 +660,7 @@ class SuggestedFixResult(BaseModel):
     review_reason: str
     review_reason_human: str = ""
     verifier_reason: str
+    unsat_core: list[str] = Field(default_factory=list)
 
 
 class VerifyAndApplyReceipt(BaseModel):
@@ -556,10 +680,13 @@ class VerifyAndApplyReceipt(BaseModel):
     proposer: str
     applied_fixes: list[FixResult] = Field(default_factory=list)
     suggested_fixes: list[SuggestedFixResult] = Field(default_factory=list)
+    proof_obligations: list[dict[str, Any]] = Field(default_factory=list)
     fixes_count: int
     issues_count: int
     limitations: list[str] = Field(default_factory=list)
     reason: str
+    machine_outcome: dict[str, Any] | None = None
+    compact_digest: str = ""
     #: See :class:`TxnReceipt.attestation`. This is the guardrail tool an external proposer
     #: calls, so it is the one where a checkable proof matters most: the caller supplied the
     #: values, and the attestation is what lets a third party confirm what was done with them.
@@ -619,6 +746,15 @@ def dataforge_verify_and_apply(
         )
     )
     receipt = result.receipt
+    unsat_by_cell = {
+        obligation.obligation_id: list(obligation.unsat_core)
+        for obligation in receipt.proof_obligations
+        if obligation.unsat_core
+    }
+    attest_fields = _attestation_fields(
+        receipt, source_path=csv_path, applied=receipt.applied, schema_path=schema_path
+    )
+    machine_outcome = dict(receipt.machine_outcome) if receipt.machine_outcome else None
     return VerifyAndApplyReceipt(
         path=str(csv_path),
         mode=mode,
@@ -641,16 +777,28 @@ def dataforge_verify_and_apply(
                 review_reason=str(candidate.review_reason),
                 review_reason_human=humanize_review_reason(candidate.review_reason),
                 verifier_reason=candidate.verifier_reason,
+                unsat_core=unsat_by_cell.get(f"row_{candidate.row}_{candidate.column}", []),
             )
             for candidate in receipt.suggested_fixes
         ],
+        proof_obligations=[item.model_dump() for item in receipt.proof_obligations],
         fixes_count=receipt.fixes_count,
         issues_count=receipt.issues_count,
         limitations=receipt.limitations,
         reason=receipt.reason,
-        **_attestation_fields(
-            receipt, source_path=csv_path, applied=receipt.applied, schema_path=schema_path
+        machine_outcome=machine_outcome,
+        compact_digest=_compact_digest(
+            tool="dataforge_verify_and_apply",
+            path=csv_path,
+            applied=receipt.applied,
+            fixes_count=receipt.fixes_count,
+            held_count=len(receipt.suggested_fixes),
+            issues_count=receipt.issues_count,
+            txn_id=receipt.txn_id,
+            machine_outcome=machine_outcome,
+            attested=attest_fields.get("attestation") is not None,
         ),
+        **attest_fields,
     )
 
 
@@ -687,6 +835,10 @@ class AgentRepairReceipt(BaseModel):
     fixes: list[FixResult]
     held_fixes: list[FixResult] = Field(default_factory=list)
     trace: list[AgentRepairRecord]
+    machine_outcome: dict[str, Any] | None = None
+    compact_digest: str = ""
+    attestation: dict[str, Any] | None = None
+    attestation_unavailable: str | None = None
 
 
 def dataforge_agent_repair(
@@ -769,6 +921,13 @@ def dataforge_agent_repair(
             allow_unproven_autoapply=allow_unproven_autoapply,
         )
     )
+    attest_fields = _attestation_fields(
+        result.to_receipt(),
+        source_path=csv_path,
+        applied=result.applied,
+        schema_path=schema_path,
+    )
+    machine_outcome = dict(result.machine_outcome) if result.machine_outcome else None
     return AgentRepairReceipt(
         path=str(csv_path),
         mode=result.mode,
@@ -799,6 +958,19 @@ def dataforge_agent_repair(
             )
             for record in result.trace
         ],
+        machine_outcome=machine_outcome,
+        compact_digest=_compact_digest(
+            tool="dataforge_agent_repair",
+            path=csv_path,
+            applied=result.applied,
+            fixes_count=result.fixes_count,
+            held_count=len(result.held_fixes),
+            issues_count=result.issues_count,
+            txn_id=result.txn_id,
+            machine_outcome=machine_outcome,
+            attested=attest_fields.get("attestation") is not None,
+        ),
+        **attest_fields,
     )
 
 

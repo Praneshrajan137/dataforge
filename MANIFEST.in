@@ -12,7 +12,9 @@ prune logs
 prune build
 prune dist
 prune .github
+prune .agents
 prune .hf-space-repo
 prune .hf-space-stage
 prune .hf-space-stage-plan
+exclude llms.txt
 global-exclude __pycache__ *.py[cod] *.ipynb .pytest_cache .mypy_cache .ruff_cache .hypothesis

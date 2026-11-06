@@ -1,0 +1,31 @@
+# DataForge
+
+> Verification-gated data guardrail and repair engine for autonomous AI agents and tabular data pipelines.
+
+DataForge intercepts proposed cell edits before they touch user data, verifies each candidate against an operator-declared schema premise (`YAML`/`JSON`) using N-version checking (`SMTVerifier` backed by Z3 plus an independent `DirectVerifier`), enforces a table conservation constitution (`SafetyFilter` + `t_0` conservation invariants), commits only proven edits inside byte-reversible hash-chained transactions, and emits portable offline-verifiable in-toto / DSSE attestations bound to the transaction journal head. Edits without a declared premise or failing verification are held for review with explicit `unsat_core` proof obligations rather than silently written.
+
+## Core Documentation
+
+- [README](README.md): Installation, CLI commands, benchmark summary, and quickstart entry points.
+- [Product Constitution](PRODUCT.md): Proven-only write authority, honesty invariants, and anti-corruption rules.
+- [System Architecture](ARCHITECTURE.md): End-to-end verification pipeline, N-version solvers, safety filter, and transaction journal.
+- [Decision Log](DECISIONS.md): Append-only engineering and empirical decision history.
+
+## Specifications & Trust Proofs
+
+- [SMT Verifier Specification](specs/SPEC_smt_verifier.md): Formal definitions of Z3 SMT encoding, independent direct verification, and `unsat_core` witnesses.
+- [Safety & Auto-Apply Specification](specs/SPEC_safety.md): Safety constitution, provenance escalations, and write-authority rules.
+- [Repair Attestation Specification](specs/SPEC_repair_attestation.md): Portable in-toto / DSSE repair attestation predicate and normative verification checks.
+- [Transactions Specification](specs/SPEC_transactions.md): Atomic file writes, hash-chained transaction journal, and byte-identical rollback.
+- [MCP Server Specification](specs/SPEC_mcp_server.md): Model Context Protocol tool schemas, untrusted provenance defaults, and context-safe pagination.
+- [Benchmark Report](BENCHMARK_REPORT.md): Generated benchmark tables across error classes and datasets.
+- [Attestation Conformance Gate](scripts/ci/attestation_conformance.py): Cross-runtime attestation verification across Python, TypeScript, and Java.
+- [Quantitative Claims Ledger](docs/quantitative_claims.yaml): Bidirectional artifact-to-prose traceability ledger.
+
+## Agent Guardrail & Ecosystem Surfaces
+
+- [Agent Verification Skill](.agents/skills/dataforge-verify/SKILL.md): Concise workflow for AI coding and data agents using DataForge MCP or CLI tools.
+- [MCP Server](dataforge-mcp/README.md): Model Context Protocol server exposing read-only profiling, dry-run verification, and gated write tools.
+- [Evaluation Suite & Harbor Exporter](packages/dataforge-evals/README.md): Contamination-aware evaluation harness, planted-bug precision suite, and Harbor task exporter.
+- [dbt Integration](packages/dataforge-dbt/README.md): Schema translation and verification dispatch for dbt projects.
+- [Agent Patterns](packages/dataforge-agent-patterns/README.md): Reference patterns for wrapping autonomous data-editing agents with DataForge guardrails.

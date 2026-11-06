@@ -286,6 +286,19 @@ _WRITE_PRIMITIVE_REGISTRY: tuple[WritePrimitive, ...] = (
     WritePrimitive("dbt:dispatch.py", "write_text", "metadata", "dbt journal artifact."),
     WritePrimitive("dbt:dispatch.py", "unlink", "metadata", "dbt temp cleanup."),
     WritePrimitive("evals:report.py", "write_text", "metadata", "Evaluation report artifacts."),
+    WritePrimitive(
+        "evals:harbor_export.py",
+        "write_text",
+        "metadata",
+        "Exports Harbor / Terminal-Bench 2.0 benchmark task bundles to an explicit output dir.",
+    ),
+    WritePrimitive(
+        "mcp:tools.py",
+        "write_text",
+        "metadata",
+        "Writes context-safe full-issue staging JSON under .dataforge/staging/ when "
+        "stage_to_disk=True; never touches user CSVs.",
+    ),
     # ---- scratch: temp dirs and packaged fixtures, never user data ----
     WritePrimitive(
         "dataforge:certificate.py",

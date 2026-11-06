@@ -23,18 +23,198 @@ for the same reason.
 
 from __future__ import annotations
 
+import json
 import time
 from importlib import resources
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 
+_DISASTER_CSV_BYTES = (
+    b"zip,city,score\n"
+    b"35233,BIRMINGHAM,92\n"
+    b"35233,BIRMINGHAM,89\n"
+    b"35233,BIRMINGHAM,94\n"
+    b"35233,BIRMINGHAM,91\n"
+    b"35233,BIRMINGHHAM,88\n"
+    b"10001,NEW YORK,95\n"
+)
 
-def quickstart() -> None:
+_DISASTER_SCHEMA_BYTES = (
+    b"columns:\n"
+    b"  zip: string\n"
+    b"  city: string\n"
+    b"  score: int\n"
+    b"domain_bounds:\n"
+    b"  score:\n"
+    b"    min: 0\n"
+    b"    max: 100\n"
+    b"functional_dependencies:\n"
+    b"  - determinant: [zip]\n"
+    b"    dependent: city\n"
+)
+
+
+def _run_disaster_demo(*, json_output: bool) -> None:
+    """Run a zero-key guardrail disaster demo in an isolated scratch directory."""
+    from dataforge.attestation import verify_attestation
+    from dataforge.cli.common import load_schema
+    from dataforge.cli.emit import attest_result
+    from dataforge.engine.repair import ExternalFix, VerifyAndApplyRequest, verify_and_apply
+    from dataforge.transactions.log import sha256_file
+    from dataforge.transactions.revert import revert_transaction
+
+    started = time.perf_counter()
+    with TemporaryDirectory() as work_dir:
+        root = Path(work_dir)
+        working_csv = root / "payments.csv"
+        working_schema = root / "payments.schema.yaml"
+        working_csv.write_bytes(_DISASTER_CSV_BYTES)
+        working_schema.write_bytes(_DISASTER_SCHEMA_BYTES)
+
+        source_sha256 = sha256_file(working_csv)
+        schema = load_schema(working_schema)
+
+        rogue_agent_batch = [
+            ExternalFix(
+                row=4,
+                column="city",
+                new_value="BIRMINGHAM",
+                expected_old_value="BIRMINGHHAM",
+            ),
+            ExternalFix(
+                row=0,
+                column="score",
+                new_value="999",
+                expected_old_value="92",
+            ),
+            ExternalFix(
+                row=1,
+                column="city",
+                new_value="ATLANTA",
+                expected_old_value="BIRMINGHAM",
+            ),
+            ExternalFix(
+                row=5,
+                column="city",
+                new_value="NEW YORK",
+                expected_old_value="BOSTON",
+            ),
+        ]
+
+        result = verify_and_apply(
+            VerifyAndApplyRequest(
+                source_path=working_csv,
+                fixes=rogue_agent_batch,
+                mode="apply",
+                schema=schema,
+                proposer="rogue_llm_agent",
+                confirm_escalations=True,
+            )
+        )
+        post_apply_sha256 = sha256_file(working_csv)
+
+        attest_payload = attest_result(
+            result,
+            source_path=working_csv,
+            schema_path=working_schema,
+        )
+        statement = attest_payload["attestation"]
+        verification = verify_attestation(
+            statement,
+            data_bytes=working_csv.read_bytes(),
+        )
+        journal_head = str(statement["predicate"]["journal"]["head_sha256"])
+        txn_id = result.receipt.txn_id
+        assert txn_id is not None
+
+        revert_transaction(txn_id, search_root=root)
+        reverted_sha256 = sha256_file(working_csv)
+
+    elapsed = time.perf_counter() - started
+    unsat_by_obligation = {
+        ob.obligation_id: list(ob.unsat_core) for ob in result.receipt.proof_obligations
+    }
+    intercepted_details: list[dict[str, Any]] = [
+        {
+            "row": held.row,
+            "column": held.column,
+            "proposed_value": held.new_value,
+            "review_reason": held.review_reason,
+            "unsat_core": unsat_by_obligation.get(f"row_{held.row}_{held.column}", []),
+        }
+        for held in result.receipt.suggested_fixes
+    ]
+    payload: dict[str, Any] = {
+        "schema_version": "disaster_demo_v1",
+        "elapsed_seconds": round(elapsed, 4),
+        "zero_api_keys_required": True,
+        "submitted_edits": len(rogue_agent_batch),
+        "applied_proven_fixes": len(result.fixes),
+        "intercepted_corruptions": len(intercepted_details),
+        "intercepted_details": intercepted_details,
+        "txn_id": txn_id,
+        "attestation_verified": verification.ok,
+        "journal_head_sha256": journal_head,
+        "source_sha256": source_sha256,
+        "post_apply_sha256": post_apply_sha256,
+        "reverted_sha256": reverted_sha256,
+        "byte_identical_revert": reverted_sha256 == source_sha256,
+    }
+
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+        raise typer.Exit(code=0)
+
+    console = Console()
+    held_lines = "\n".join(
+        f"  - row {item['row']} [bold]{item['column']}[/bold] -> {item['proposed_value']!r}: "
+        f"[red]{item['review_reason']}[/red]"
+        + (f" (unsat_core={item['unsat_core']})" if item["unsat_core"] else "")
+        for item in intercepted_details
+    )
+    console.print(
+        Panel(
+            f"Completed zero-key guardrail simulation in [bold]{elapsed:.2f}s[/bold].\n"
+            f"Submitted [bold]{len(rogue_agent_batch)}[/bold] agent edits; "
+            f"intercepted [red]{len(intercepted_details)}[/red] corrupting edits (no bad writes) "
+            f"and applied [green]{len(result.fixes)}[/green] SMT-proven FD repair.\n\n"
+            f"Intercepted rogue edits:\n{held_lines}\n\n"
+            f"Attestation verified: [green]{verification.ok}[/green] "
+            f"(journal head `{journal_head[:16]}...`)\n"
+            f"Byte-identical revert: [green]{reverted_sha256 == source_sha256}[/green] "
+            f"(`{source_sha256[:16]}...` == `{reverted_sha256[:16]}...`)",
+            title="DataForge Disaster Demo (Zero API Keys)",
+            style="green",
+        )
+    )
+    raise typer.Exit(code=0)
+
+
+def quickstart(
+    disaster_demo: Annotated[
+        bool,
+        typer.Option(
+            "--disaster-demo",
+            help="Simulate a rogue agent batch: intercept 3 corruptions, apply 1 proven FD fix, "
+            "verify portable attestation, and revert byte-for-byte with zero API keys.",
+        ),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Emit machine-readable JSON output (supported with --disaster-demo).",
+        ),
+    ] = False,
+) -> None:
     """Run a guided demo: profile and verify repairs on bundled, premised data."""
+    if disaster_demo:
+        _run_disaster_demo(json_output=json_output)
     console = Console()
     from dataforge.engine.repair import RepairPipelineRequest, run_repair_pipeline
 

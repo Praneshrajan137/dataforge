@@ -416,3 +416,44 @@ def test_no_public_key_reports_unsigned_never_authentic() -> None:
 def test_signing_rejects_a_non_ed25519_key() -> None:
     with pytest.raises(TypeError):
         sign_attestation(_statement(), private_key="not-a-key")
+
+
+def test_malformed_journal_head_sha256_fails_schema_complete() -> None:
+    statement = _statement()
+    statement["predicate"]["journal"]["head_sha256"] = "not-a-64-char-hex-digest"
+    result = verify_attestation(statement)
+    assert result.ok is False
+    assert "schema_complete" in _failed(result)
+
+
+def test_cli_emit_binds_verified_journal_head_sha256(tmp_path: Path) -> None:
+    from dataforge.cli.emit import attest_result
+    from dataforge.transactions.log import journal_head_sha256_for
+    from tests.support.tables import build_premised_repairable_table
+
+    table = build_premised_repairable_table(tmp_path / "cities.csv")
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text(
+        json.dumps(
+            {
+                "columns": dict(table.schema.columns),
+                "functional_dependencies": [
+                    {"determinant": list(fd.determinant), "dependent": fd.dependent}
+                    for fd in table.schema.functional_dependencies
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    outcome = run_repair_pipeline(
+        RepairPipelineRequest(source_path=table.csv_path, mode="apply", schema=table.schema)
+    )
+    assert outcome.receipt.applied is True
+    expected_head = journal_head_sha256_for(table.csv_path, outcome.receipt.txn_id)
+    assert expected_head is not None and len(expected_head) == 64
+
+    emitted = attest_result(outcome, source_path=table.csv_path, schema_path=schema_path)
+    att = emitted["attestation"]
+    assert att["predicate"]["journal"]["head_sha256"] == expected_head
+    verified = verify_attestation(att, data_bytes=table.csv_path.read_bytes())
+    assert verified.ok is True

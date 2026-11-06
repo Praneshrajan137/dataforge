@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from dataforge.agent.scratchpad import Scratchpad
 from dataforge.agent.tool_actions import (
+    Abstain,
     Action,
     Diagnose,
     Fix,
@@ -42,7 +43,6 @@ from dataforge.env.observation import DataForgeObservation, ToolResult
 from dataforge.env.reward import (
     P_FALSE_POS,
     P_INVALID,
-    P_WRONG_FIX,
     R_EXPLORE,
     R_ROOT_CAUSE,
     EpisodeMetrics,
@@ -156,15 +156,20 @@ class DataForgeEnv:
         False
     """
 
-    def __init__(self, max_steps: int = _MAX_STEPS) -> None:
+    def __init__(self, max_steps: int = _MAX_STEPS, *, strict_calibration: bool = False) -> None:
         self._max_steps = max_steps
+        self._strict_calibration = strict_calibration
         self._episode_id = ""
         self._step_count = 0
         self._df: pd.DataFrame = pd.DataFrame()
+        self._baseline_df: pd.DataFrame = pd.DataFrame()
         self._ground_truth: list[Issue] = []
         self._found_issues: list[dict[str, Any]] = []
         self._fixed_issues: list[dict[str, Any]] = []
         self._false_positives = 0
+        self._wrong_fixes = 0
+        self._honest_abstentions = 0
+        self._abstained_cells: set[tuple[int, str]] = set()
         self._cumulative_reward = 0.0
         self._is_done = False
         self._inspected_rows: set[int] = set()
@@ -172,7 +177,7 @@ class DataForgeEnv:
         self._noise_rng: random.Random | None = None
         self._scratchpad = Scratchpad()
         self._tool_history: list[ToolResult] = []
-        self._reward_engine = RewardEngine()
+        self._reward_engine = RewardEngine(strict_calibration=strict_calibration)
         self._schema_info: dict[str, str] = {}
         self._schema: Schema | None = None
         self._causal_dag_cache: Any = None
@@ -180,12 +185,23 @@ class DataForgeEnv:
 
     # ── Core API ──────────────────────────────────────────────────────────
 
-    def reset(self, seed: int | None = None, *, noisy: bool = False) -> ResetResult:
+    def reset(
+        self,
+        seed: int | None = None,
+        *,
+        noisy: bool = False,
+        df: pd.DataFrame | None = None,
+        schema: Schema | None = None,
+        ground_truth: list[Issue] | None = None,
+    ) -> ResetResult:
         """Reset the environment for a new episode.
 
         Args:
             seed: Optional RNG seed for deterministic episodes.
             noisy: If True, enable observation noise (epsilon=0.15).
+            df: Optional planted/custom episode DataFrame (avoids circular detector grading).
+            schema: Optional authoritative Schema for N-version episode verification.
+            ground_truth: Optional planted ground-truth issues with authoritative expected values.
 
         Returns:
             ResetResult with initial observation.
@@ -195,6 +211,9 @@ class DataForgeEnv:
         self._found_issues = []
         self._fixed_issues = []
         self._false_positives = 0
+        self._wrong_fixes = 0
+        self._honest_abstentions = 0
+        self._abstained_cells = set()
         self._cumulative_reward = 0.0
         self._is_done = False
         self._inspected_rows = set()
@@ -205,16 +224,28 @@ class DataForgeEnv:
         self._noisy = noisy
         self._noise_rng = random.Random(seed if seed is not None else 0) if noisy else None
 
-        # Load fixture dataset
-        self._df = pd.read_csv(_DEFAULT_CSV, dtype=str)
-        self._schema_info = dict.fromkeys(self._df.columns, "str")
-        self._schema = None
-        if _DEFAULT_SCHEMA.exists():
-            self._schema = load_schema(_DEFAULT_SCHEMA)
-            self._schema_info = dict(self._schema.columns)
-
-        # Run detectors for hidden ground truth
-        self._ground_truth = run_all_detectors(self._df, self._schema)
+        if df is not None:
+            self._df = df.astype(str).copy()
+            self._schema = schema
+            self._schema_info = (
+                dict(schema.columns)
+                if schema is not None and schema.columns
+                else dict.fromkeys(self._df.columns, "str")
+            )
+            self._ground_truth = (
+                list(ground_truth)
+                if ground_truth is not None
+                else run_all_detectors(self._df, self._schema)
+            )
+        else:
+            self._df = pd.read_csv(_DEFAULT_CSV, dtype=str)
+            self._schema_info = dict.fromkeys(self._df.columns, "str")
+            self._schema = None
+            if _DEFAULT_SCHEMA.exists():
+                self._schema = load_schema(_DEFAULT_SCHEMA)
+                self._schema_info = dict(self._schema.columns)
+            self._ground_truth = run_all_detectors(self._df, self._schema)
+        self._baseline_df = self._df.copy()
         logger.info(
             "Episode %s: %d rows, %d ground-truth issues",
             self._episode_id[:8],
@@ -281,7 +312,8 @@ class DataForgeEnv:
         if done:
             self._is_done = True
             terminal = self._compute_terminal()
-            self._cumulative_reward = max(self._cumulative_reward, terminal)
+            if not self._strict_calibration or self._cumulative_reward >= 0.0:
+                self._cumulative_reward = max(self._cumulative_reward, terminal)
 
         obs = DataForgeObservation(
             visible_rows=tool_result.data
@@ -332,6 +364,8 @@ class DataForgeEnv:
             return self._handle_diagnose(action)
         if isinstance(action, Fix):
             return self._handle_fix(action)
+        if isinstance(action, Abstain):
+            return self._handle_abstain(action)
         return ToolResult(
             action_type="UNKNOWN",
             success=False,
@@ -733,6 +767,8 @@ class DataForgeEnv:
                     self._fixed_issues.append(
                         {"row": action.row, "column": action.column, "value": action.new_value}
                     )
+                    if self._strict_calibration:
+                        self._df.at[action.row, action.column] = action.new_value
                     self._auto_diagnose(action, issue)
                     return ToolResult(
                         action_type="FIX", success=True, data={"result": "correct"}
@@ -750,6 +786,8 @@ class DataForgeEnv:
                         self._fixed_issues.append(
                             {"row": action.row, "column": action.column, "value": action.new_value}
                         )
+                        if self._strict_calibration:
+                            self._df.at[action.row, action.column] = action.new_value
                         self._auto_diagnose(action, issue)
                         return ToolResult(
                             action_type="FIX", success=True, data={"result": "partial_numeric"}
@@ -768,27 +806,75 @@ class DataForgeEnv:
                     self._fixed_issues.append(
                         {"row": action.row, "column": action.column, "value": action.new_value}
                     )
+                    if self._strict_calibration:
+                        self._df.at[action.row, action.column] = action.new_value
                     self._auto_diagnose(action, issue)
                     return ToolResult(
                         action_type="FIX", success=True, data={"result": "partial_string"}
                     ), reward
 
+                self._wrong_fixes += 1
                 return ToolResult(
                     action_type="FIX", success=True, data={"result": "wrong_value"}
-                ), P_WRONG_FIX
+                ), self._reward_engine.wrong_fix_penalty()
 
+        self._wrong_fixes += 1
         return ToolResult(
             action_type="FIX", success=True, data={"result": "no_issue_at_location"}
-        ), P_WRONG_FIX
+        ), self._reward_engine.wrong_fix_penalty()
+
+    def _handle_abstain(self, action: Abstain) -> tuple[ToolResult, float]:
+        """Handle ABSTAIN: reward honest abstention on unprovable cells, penalize lazy abstention."""
+        if action.row < 0 or action.row >= len(self._df):
+            return ToolResult(
+                action_type="ABSTAIN",
+                success=False,
+                error={"verdict": "error", "reason": f"Row {action.row} out of bounds"},
+            ), P_INVALID
+        if action.column not in self._df.columns:
+            return ToolResult(
+                action_type="ABSTAIN",
+                success=False,
+                error={"verdict": "error", "reason": f"Column '{action.column}' not found"},
+            ), P_INVALID
+        cell = (action.row, action.column)
+        if cell in self._abstained_cells:
+            return ToolResult(
+                action_type="ABSTAIN",
+                success=True,
+                data={"result": "already_abstained"},
+            ), P_INVALID
+        self._abstained_cells.add(cell)
+        matching = [
+            issue
+            for issue in self._ground_truth
+            if issue.row == action.row and issue.column == action.column
+        ]
+        is_provable = bool(
+            self._schema is not None and any(issue.expected is not None for issue in matching)
+        )
+        if not is_provable and matching:
+            self._honest_abstentions += 1
+        reward = self._reward_engine.abstain_reward(is_provable=is_provable)
+        return ToolResult(
+            action_type="ABSTAIN",
+            success=True,
+            data={
+                "result": "lazy_abstain" if is_provable else "honest_abstain",
+                "reason": action.reason,
+            },
+        ), reward
 
     # ── Helpers ────────────────────────────────────────────────────────────
 
     def _check_safety(self, action: Fix) -> tuple[bool, str]:
-        """Run SafetyFilter + SMTVerifier. Returns (ok, message)."""
+        """Run SafetyFilter + N-version verifier + t_0 conservation. Returns (ok, message)."""
         try:
             from dataforge.repairers.base import ProposedFix
+            from dataforge.safety.conservation import check_table_conservation
             from dataforge.safety.filter import SafetyContext, SafetyFilter, SafetyVerdict
             from dataforge.transactions.txn import CellFix
+            from dataforge.verifier.differential import differential_verify
             from dataforge.verifier.result import VerificationVerdict
             from dataforge.verifier.smt import SMTVerifier
 
@@ -800,25 +886,43 @@ class DataForgeEnv:
                 new_value=action.new_value,
                 detector_id="agent",
             )
+            provenance = "llm_live" if self._strict_calibration else "deterministic"
             proposed = ProposedFix(
                 fix=cell_fix,
                 reason=action.justification,
                 confidence=0.8,
-                provenance="deterministic",
+                provenance=provenance,  # type: ignore[arg-type]
             )
 
             sf = SafetyFilter()
-            ctx = SafetyContext()
+            ctx = SafetyContext(confirm_escalations=self._strict_calibration)
             sr = sf.evaluate(proposed, self._schema, ctx)
             if sr.verdict == SafetyVerdict.DENY:
                 return False, f"Safety filter denied: {sr.reason}"
+            if self._strict_calibration and sr.verdict != SafetyVerdict.ALLOW:
+                return False, f"Safety filter escalated: {sr.reason}"
 
-            verifier = SMTVerifier()
-            vr = verifier.verify(self._df, [proposed], self._schema)
-            if vr.verdict == VerificationVerdict.REJECT:
-                return False, f"SMT verifier rejected: {vr.reason}"
-            if vr.verdict == VerificationVerdict.UNKNOWN:
-                return False, f"SMT verifier returned unknown: {vr.reason}"
+            if self._strict_calibration:
+                candidate_df = self._df.copy()
+                candidate_df.at[action.row, action.column] = action.new_value
+                conservation = check_table_conservation(self._baseline_df, candidate_df)
+                if not conservation.ok:
+                    return (
+                        False,
+                        f"Table conservation violated: {'; '.join(conservation.violations)}",
+                    )
+
+            if self._strict_calibration and self._schema is not None:
+                diff_vr = differential_verify(self._df, [proposed], self._schema)
+                if diff_vr.verdict != VerificationVerdict.ACCEPT:
+                    return False, f"Differential verifier rejected: {diff_vr.reason}"
+            else:
+                verifier = SMTVerifier()
+                vr = verifier.verify(self._df, [proposed], self._schema)
+                if vr.verdict == VerificationVerdict.REJECT:
+                    return False, f"SMT verifier rejected: {vr.reason}"
+                if vr.verdict == VerificationVerdict.UNKNOWN:
+                    return False, f"SMT verifier returned unknown: {vr.reason}"
 
             return True, "Passed safety and verification"
         except ImportError as exc:
@@ -864,6 +968,8 @@ class DataForgeEnv:
             fixed_issues=len(self._fixed_issues),
             fixable_issues=len(fixable),
             false_positives=self._false_positives,
+            wrong_fixes=self._wrong_fixes,
+            honest_abstentions=self._honest_abstentions,
         )
         return self._reward_engine.compute_terminal_score(metrics)
 

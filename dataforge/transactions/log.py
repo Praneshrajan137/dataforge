@@ -643,3 +643,16 @@ def verify_transaction_log(
         event_count=len(records),
         head_sha256=head_sha256,
     )
+
+
+def journal_head_sha256_for(source_path: Path, txn_id: str | None) -> str | None:
+    """Return the verified v2 hash-chain head digest for ``txn_id``, or ``None`` if unavailable."""
+    if not txn_id or not source_path.exists():
+        return None
+    log_path = transaction_log_path_for(source_path, txn_id)
+    if not log_path.is_file():
+        return None
+    report = verify_transaction_log(txn_id, log_path=log_path)
+    if report.verdict == TransactionAuditVerdict.VERIFIED:
+        return report.head_sha256
+    return None

@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
@@ -100,6 +101,21 @@ _POOL_CAP = 50
 # member of the enum so abstention is always representable -- otherwise a strict
 # schema would force the model to pick a value it does not believe.
 _ABSTAIN_TOKEN = "NONE"
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _rejected_set(retry_context: RetryContext | None) -> frozenset[str]:
+    if retry_context is None:
+        return frozenset()
+    prior_values = {
+        attempt.fix.fix.new_value
+        for attempt in retry_context.previous_attempts
+        if attempt.fix is not None
+    }
+    return frozenset(retry_context.rejected_values | prior_values)
 
 
 async def complete(
@@ -197,6 +213,9 @@ class LLMCorrectorRepairer:
         structured_completion_fn: StructuredCompletionFn | None = None,
         pool_constrained: bool = False,
         structured: bool = False,
+        causal_json: bool | None = None,
+        simple_prompt: bool | None = None,
+        max_retries: int = 2,
     ) -> None:
         self._cache_dir = cache_dir
         self._allow_llm = allow_llm
@@ -206,6 +225,13 @@ class LLMCorrectorRepairer:
         self._completion_fn = completion_fn
         self._structured_completion_fn = structured_completion_fn
         self._structured = structured
+        self._causal_json = (
+            _env_flag("DATAFORGE_CAUSAL_JSON") if causal_json is None else causal_json
+        )
+        self._simple_prompt = (
+            _env_flag("DATAFORGE_SIMPLE_PROMPT") if simple_prompt is None else simple_prompt
+        )
+        self._max_retries = max(0, max_retries)
         # A decode-time enum IS the pool constraint, so structured mode implies
         # it. Keeping them independent would allow a schema whose enum is the
         # whole column while the post-filter still rejected values -- two
@@ -222,8 +248,9 @@ class LLMCorrectorRepairer:
         retry_context: RetryContext | None = None,
     ) -> ProposedFix | None:
         """Return a contract-passing exact-value correction, or ``None``."""
-        del retry_context
         if not self._allow_llm:
+            return None
+        if retry_context is not None and len(retry_context.previous_attempts) > self._max_retries:
             return None
         if issue.row < 0 or issue.row >= row_count(df):
             return None
@@ -235,7 +262,9 @@ class LLMCorrectorRepairer:
         if not contract.is_cell_correction:
             return None
 
-        chosen, agreement, provenance = self._resolve(issue, df, contract, constraints)
+        chosen, agreement, provenance = self._resolve(
+            issue, df, contract, constraints, retry_context=retry_context
+        )
         if chosen is None:
             return None
 
@@ -275,26 +304,39 @@ class LLMCorrectorRepairer:
         df: TableLike,
         contract: CorrectionContract,
         constraints: Schema,
+        *,
+        retry_context: RetryContext | None = None,
     ) -> tuple[str | None, float, ProvenanceLiteral]:
         """Sample (or replay) values, filter by contract, return the majority."""
-        prompt = self._build_messages(issue, df, contract)
+        rejected = _rejected_set(retry_context)
+        prompt = self._build_messages(issue, df, contract, retry_context=retry_context)
         cache_path = self._cache_path(issue, df, prompt)
 
         cached_samples = self._read_cache(cache_path)
         if cached_samples is not None:
-            chosen, agreement = self._vote(cached_samples, issue, df, contract, constraints)
+            chosen, agreement = self._vote(
+                cached_samples, issue, df, contract, constraints, rejected_values=rejected
+            )
             return chosen, agreement, "llm_cache"
 
-        response_format = self._response_format(df, issue)
+        response_format = self._response_format(df, issue, rejected_values=rejected)
         raw_samples = [self._one_sample(prompt, response_format) for _ in range(self._samples)]
         samples = [_parse_sample(raw) for raw in raw_samples]
         values = [value for value, _ in samples]
         confidences = [confidence for _, confidence in samples]
         self._write_cache(cache_path, issue, raw_samples, values, confidences)
-        chosen, agreement = self._vote(samples, issue, df, contract, constraints)
+        chosen, agreement = self._vote(
+            samples, issue, df, contract, constraints, rejected_values=rejected
+        )
         return chosen, agreement, "llm_live"
 
-    def _response_format(self, df: TableLike, issue: Issue) -> dict[str, object] | None:
+    def _response_format(
+        self,
+        df: TableLike,
+        issue: Issue,
+        *,
+        rejected_values: frozenset[str] = frozenset(),
+    ) -> dict[str, object] | None:
         """Return a strict Structured-Outputs schema, or ``None`` in free-text mode.
 
         Honours every documented Structured Outputs constraint: ``strict: true``,
@@ -305,11 +347,24 @@ class LLMCorrectorRepairer:
         """
         if not self._structured:
             return None
-        pool = self._candidate_pool(df, issue.column)
+        pool = self._candidate_pool(df, issue.column, rejected_values=rejected_values)
         if not pool:
             # No closed candidate set means no enum to constrain to. Abstain from
             # the structured path rather than emit a degenerate one-value schema.
             return None
+        if self._causal_json:
+            properties: dict[str, object] = {
+                "constraint_check": {"type": "string"},
+                "value": {"type": "string", "enum": [*pool, _ABSTAIN_TOKEN]},
+                "confidence": {"type": "number"},
+            }
+            required = ["constraint_check", "value", "confidence"]
+        else:
+            properties = {
+                "value": {"type": "string", "enum": [*pool, _ABSTAIN_TOKEN]},
+                "confidence": {"type": "number"},
+            }
+            required = ["value", "confidence"]
         return {
             "type": "json_schema",
             "json_schema": {
@@ -317,11 +372,8 @@ class LLMCorrectorRepairer:
                 "strict": True,
                 "schema": {
                     "type": "object",
-                    "properties": {
-                        "value": {"type": "string", "enum": [*pool, _ABSTAIN_TOKEN]},
-                        "confidence": {"type": "number"},
-                    },
-                    "required": ["value", "confidence"],
+                    "properties": properties,
+                    "required": required,
                     "additionalProperties": False,
                 },
             },
@@ -354,6 +406,8 @@ class LLMCorrectorRepairer:
         df: TableLike,
         contract: CorrectionContract,
         constraints: Schema,
+        *,
+        rejected_values: frozenset[str] = frozenset(),
     ) -> tuple[str | None, float]:
         """Majority vote among contract- and guard-passing candidate values.
 
@@ -365,7 +419,9 @@ class LLMCorrectorRepairer:
         passing = [
             (value, confidence)
             for value, confidence in samples
-            if self._candidate_ok(value, issue, df, contract, constraints)
+            if self._candidate_ok(
+                value, issue, df, contract, constraints, rejected_values=rejected_values
+            )
         ]
         if not passing:
             return None, 0.0
@@ -389,6 +445,8 @@ class LLMCorrectorRepairer:
         df: TableLike,
         contract: CorrectionContract,
         constraints: Schema,
+        *,
+        rejected_values: frozenset[str] = frozenset(),
     ) -> bool:
         """A candidate is acceptable only if it passes every gate the verifier will."""
         # The abstention sentinel is never a candidate value. Under a strict enum
@@ -396,14 +454,24 @@ class LLMCorrectorRepairer:
         # says "no candidate is clearly correct".
         if value == _ABSTAIN_TOKEN:
             return False
-        if self._pool_constrained and value not in self._candidate_pool(df, issue.column):
+        if value in rejected_values:
+            return False
+        if self._pool_constrained and value not in self._candidate_pool(
+            df, issue.column, rejected_values=rejected_values
+        ):
             return False
         if not contract.check(value).ok:
             return False
         violation = inferred_value_violation(df, issue.row, issue.column, value, constraints)
         return violation is None
 
-    def _candidate_pool(self, df: TableLike, column: str) -> list[str]:
+    def _candidate_pool(
+        self,
+        df: TableLike,
+        column: str,
+        *,
+        rejected_values: frozenset[str] = frozenset(),
+    ) -> list[str]:
         """Return the column's frequent-value pool (support-graded, freq-capped).
 
         Cached per (df identity, column). This is the closed candidate set the
@@ -412,21 +480,29 @@ class LLMCorrectorRepairer:
         """
         key = (id(df), column)
         cached = self._pool_cache.get(key)
-        if cached is not None:
+        if cached is None:
+            counts = Counter(str(v) for v in column_values(df, column) if str(v).strip() != "")
+            cached = [value for value, n in counts.most_common() if n >= _POOL_MIN_SUPPORT][
+                :_POOL_CAP
+            ]
+            self._pool_cache[key] = cached
+        if not rejected_values:
             return cached
-        counts = Counter(str(v) for v in column_values(df, column) if str(v).strip() != "")
-        pool = [value for value, n in counts.most_common() if n >= _POOL_MIN_SUPPORT][:_POOL_CAP]
-        self._pool_cache[key] = pool
-        return pool
+        return [value for value in cached if value not in rejected_values]
 
     def _build_messages(
         self,
         issue: Issue,
         df: TableLike,
         contract: CorrectionContract,
+        *,
+        retry_context: RetryContext | None = None,
     ) -> list[Message]:
         """Construct a grounded prompt from real table evidence and the contract."""
         examples = self._column_examples(df, issue.column, issue.row)
+        rejected = _rejected_set(retry_context)
+        if self._simple_prompt:
+            examples = examples[:5]
         evidence: dict[str, object] = {
             "column": issue.column,
             "current_value": issue.actual,
@@ -436,37 +512,76 @@ class LLMCorrectorRepairer:
         fd_context = self._fd_context(df, issue, contract.constraints)
         if fd_context is not None:
             evidence["functional_dependency"] = fd_context
+        if retry_context is not None:
+            unsat_clauses = list(
+                dict.fromkeys(
+                    clause
+                    for attempt in retry_context.previous_attempts
+                    for clause in attempt.unsat_core
+                )
+            )
+            if rejected or unsat_clauses or retry_context.hints:
+                evidence["clue_delta"] = {
+                    "attempt": len(retry_context.previous_attempts) + 1,
+                    "rejected_values": sorted(rejected),
+                    "unsat_core": unsat_clauses,
+                    "hints": list(retry_context.hints),
+                }
 
         if self._structured:
-            pool = self._candidate_pool(df, issue.column)
+            pool = self._candidate_pool(df, issue.column, rejected_values=rejected)
             evidence["candidate_pool"] = pool
-            # The enum already enforces membership at decode time, so the prompt
-            # spends its words on the decision rule and on making abstention
-            # feel legitimate rather than on restating the constraint.
-            system = (
-                "You correct a single erroneous cell in a tabular dataset. Use only "
-                "the evidence provided; do not invent facts. Choose the value that the "
-                "evidence supports, and report your confidence in it from 0 to 1. If no "
-                f"candidate is clearly correct, answer {_ABSTAIN_TOKEN} -- abstaining is "
-                "correct and preferred over guessing."
-            )
+            if self._simple_prompt:
+                system = f"Pick valid cell value or {_ABSTAIN_TOKEN} with confidence 0..1."
+            else:
+                # The enum already enforces membership at decode time, so the prompt
+                # spends its words on the decision rule and on making abstention
+                # feel legitimate rather than on restating the constraint.
+                system = (
+                    "You correct a single erroneous cell in a tabular dataset. Use only "
+                    "the evidence provided; do not invent facts. Choose the value that the "
+                    "evidence supports, and report your confidence in it from 0 to 1. If no "
+                    f"candidate is clearly correct, answer {_ABSTAIN_TOKEN} -- abstaining is "
+                    "correct and preferred over guessing."
+                )
         elif self._pool_constrained:
-            pool = self._candidate_pool(df, issue.column)
+            pool = self._candidate_pool(df, issue.column, rejected_values=rejected)
             evidence["candidate_pool"] = pool
-            system = (
-                "You correct a single erroneous cell in a tabular dataset. Use only "
-                "the evidence provided; do not invent facts. You MUST choose the "
-                "corrected value EXACTLY from candidate_pool, using the other evidence "
-                "as context to disambiguate. If no candidate is clearly correct, "
-                "respond with exactly NONE. Respond with only the chosen value or NONE."
-            )
+            if self._simple_prompt:
+                system = f"Choose exact value from candidate_pool or {_ABSTAIN_TOKEN}."
+            else:
+                system = (
+                    "You correct a single erroneous cell in a tabular dataset. Use only "
+                    "the evidence provided; do not invent facts. You MUST choose the "
+                    "corrected value EXACTLY from candidate_pool, using the other evidence "
+                    "as context to disambiguate. If no candidate is clearly correct, "
+                    "respond with exactly NONE. Respond with only the chosen value or NONE."
+                )
         else:
-            system = (
-                "You correct a single erroneous cell in a tabular dataset. "
-                "Use only the evidence provided; do not invent facts. "
-                "Respond with only the corrected value and nothing else."
-            )
-        user = f"{contract.describe()}\n\nEvidence:\n{json.dumps(evidence, sort_keys=True)}"
+            if self._simple_prompt:
+                system = "Output only the corrected cell value from evidence."
+            else:
+                system = (
+                    "You correct a single erroneous cell in a tabular dataset. "
+                    "Use only the evidence provided; do not invent facts. "
+                    "Respond with only the corrected value and nothing else."
+                )
+        if self._simple_prompt:
+            compact_evidence = {
+                "col": issue.column,
+                "cur": issue.actual,
+                "ex": examples,
+                **(
+                    {"fd": fd_context["peer_values"]}
+                    if isinstance(fd_context, dict) and "peer_values" in fd_context
+                    else {}
+                ),
+                **({"pool": evidence["candidate_pool"]} if "candidate_pool" in evidence else {}),
+                **({"delta": evidence["clue_delta"]} if "clue_delta" in evidence else {}),
+            }
+            user = json.dumps(compact_evidence, separators=(",", ":"), sort_keys=True)
+        else:
+            user = f"{contract.describe()}\n\nEvidence:\n{json.dumps(evidence, sort_keys=True)}"
         return [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -534,6 +649,8 @@ class LLMCorrectorRepairer:
             # the same prompt, so they must not share a cache entry. Omitted when
             # False so every pre-existing cache file stays valid.
             **({"structured": True} if self._structured else {}),
+            **({"causal_json": True} if self._causal_json else {}),
+            **({"simple_prompt": True} if self._simple_prompt else {}),
         }
         digest = sha256_bytes(json.dumps(payload, sort_keys=True).encode("utf-8"))
         model_slug = self._model.replace("/", "_")
